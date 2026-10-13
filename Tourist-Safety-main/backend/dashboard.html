@@ -1,0 +1,1398 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Tourist Safety | Authority Monitoring & AI Predictive Dashboard</title>
+<!-- Leaflet Map CSS -->
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="" />
+<style>
+:root {
+  --primary: #1e3a8a;
+  --primary-light: #2563eb;
+  --danger: #dc2626;
+  --danger-light: #fee2e2;
+  --safe: #16a34a;
+  --safe-light: #dcfce7;
+  --warning: #d97706;
+  --warning-light: #fef3c7;
+  --bg: #f8fafc;
+  --card-bg: #ffffff;
+  --border: #e2e8f0;
+  --text-main: #0f172a;
+  --text-muted: #64748b;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { background: var(--bg); color: var(--text-main); min-height: 100vh; }
+header {
+  background: #0f172a;
+  color: #fff;
+  padding: 20px 32px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 16px;
+  border-bottom: 3px solid var(--primary-light);
+}
+.eyebrow { font-size: 11px; font-weight: 800; letter-spacing: 1.5px; color: #60a5fa; text-transform: uppercase; }
+h1 { font-size: 24px; font-weight: 800; margin-top: 4px; }
+header p { font-size: 13px; color: #94a3b8; }
+.header-actions { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.pill {
+  background: rgba(255,255,255,0.08);
+  border: 1px solid rgba(255,255,255,0.15);
+  border-radius: 9999px;
+  padding: 8px 14px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #e2e8f0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.dot { width: 8px; height: 8px; border-radius: 50%; background: #64748b; }
+.dot.online { background: #22c55e; box-shadow: 0 0 8px #22c55e; }
+.dot.offline { background: #ef4444; }
+.btn {
+  background: var(--primary-light);
+  color: white;
+  border: none;
+  border-radius: 8px;
+  padding: 9px 16px;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  transition: all 0.15s ease;
+}
+.btn:hover { background: #1d4ed8; }
+.btn-success { background: var(--safe); }
+.btn-success:hover { background: #15803d; }
+.btn-danger { background: var(--danger); }
+.btn-danger:hover { background: #b91c1c; }
+.btn-secondary { background: #f1f5f9; color: var(--text-main); border: 1px solid var(--border); }
+.btn-secondary:hover { background: #e2e8f0; }
+
+main { max-width: 1540px; margin: 0 auto; padding: 24px 28px; }
+
+/* Metrics */
+.metrics-grid {
+  display: grid;
+  grid-template-columns: repeat(6, 1fr);
+  gap: 14px;
+  margin-bottom: 24px;
+}
+.metric-card {
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 16px 18px;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+}
+.metric-label { font-size: 10px; font-weight: 800; color: var(--text-muted); letter-spacing: 0.8px; text-transform: uppercase; }
+.metric-value { font-size: 28px; font-weight: 900; margin: 4px 0; }
+.metric-sub { font-size: 11px; color: var(--text-muted); }
+.metric-danger .metric-value { color: var(--danger); }
+.metric-safe .metric-value { color: var(--safe); }
+.metric-warning .metric-value { color: var(--warning); }
+.metric-ai .metric-value { color: #2563eb; }
+.metric-incidents .metric-value { color: #7c3aed; }
+
+/* Main Split View */
+.content-grid {
+  display: grid;
+  grid-template-columns: 1.55fr 1fr;
+  gap: 20px;
+}
+@media (max-width: 1200px) {
+  .metrics-grid { grid-template-columns: repeat(3, 1fr); }
+  .content-grid { grid-template-columns: 1fr; }
+}
+@media (max-width: 768px) {
+  .metrics-grid { grid-template-columns: repeat(2, 1fr); }
+}
+
+.panel {
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 20px;
+  margin-bottom: 20px;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.03);
+}
+.panel-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 14px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--border);
+  flex-wrap: wrap;
+  gap: 10px;
+}
+.panel-title { font-size: 16px; font-weight: 800; }
+
+/* Layer toggles */
+.layer-toggles {
+  display: flex;
+  gap: 14px;
+  flex-wrap: wrap;
+  margin-bottom: 10px;
+  font-size: 12px;
+  background: #f8fafc;
+  padding: 8px 12px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+}
+.layer-toggles label {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  cursor: pointer;
+  font-weight: 600;
+  color: #334155;
+  user-select: none;
+}
+
+/* Map */
+#mapContainer {
+  height: 400px;
+  width: 100%;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  overflow: hidden;
+  margin-bottom: 12px;
+  z-index: 1;
+}
+
+/* Table */
+.table-filter { margin-bottom: 12px; display: flex; gap: 10px; }
+.table-filter input {
+  flex: 1;
+  padding: 8px 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  font-size: 13px;
+}
+.table-wrap { overflow-x: auto; max-height: 420px; }
+table { width: 100%; border-collapse: collapse; font-size: 12.5px; text-align: left; }
+th {
+  background: #f8fafc;
+  color: var(--text-muted);
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  padding: 10px 12px;
+  position: sticky;
+  top: 0;
+  border-bottom: 1px solid var(--border);
+  white-space: nowrap;
+}
+td { padding: 10px 12px; border-bottom: 1px solid #f1f5f9; vertical-align: middle; }
+tr:hover td { background: #f8fafc; }
+
+/* Badges */
+.badge {
+  display: inline-block;
+  padding: 3px 8px;
+  border-radius: 9999px;
+  font-size: 11px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+.badge-safe { background: var(--safe-light); color: var(--safe); }
+.badge-danger { background: var(--danger-light); color: var(--danger); }
+.badge-sos { background: var(--danger); color: #fff; animation: pulse 1.5s infinite; }
+.badge-warning { background: var(--warning-light); color: var(--warning); }
+.badge-muted { background: #f1f5f9; color: var(--text-muted); }
+
+/* AI Risk Badges */
+.badge-risk-critical { background: #fee2e2; color: #dc2626; border: 1px solid #fca5a5; font-weight: 800; }
+.badge-risk-high { background: #ffedd5; color: #c2410c; border: 1px solid #fdba74; font-weight: 800; }
+.badge-risk-moderate { background: #fef3c7; color: #b45309; border: 1px solid #fde047; font-weight: 700; }
+.badge-risk-low { background: #dcfce7; color: #15803d; border: 1px solid #86efac; font-weight: 700; }
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.6; }
+}
+
+/* Hotspots Grid */
+.hotspots-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 12px;
+  margin-bottom: 16px;
+}
+.hotspot-card {
+  background: #f8fafc;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 12px 14px;
+  transition: transform 0.15s ease;
+}
+.hotspot-card:hover { transform: translateY(-2px); box-shadow: 0 4px 6px -1px rgba(0,0,0,0.06); }
+.hotspot-card.critical { border-left: 4px solid var(--danger); }
+.hotspot-card.high { border-left: 4px solid #ea580c; }
+.hotspot-card.moderate { border-left: 4px solid var(--warning); }
+
+/* Alerts List */
+.alert-card {
+  border-left: 4px solid var(--danger);
+  background: #fffafa;
+  border-top: 1px solid #fee2e2;
+  border-right: 1px solid #fee2e2;
+  border-bottom: 1px solid #fee2e2;
+  border-radius: 8px;
+  padding: 14px;
+  margin-bottom: 12px;
+}
+.alert-top { display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; }
+.alert-id { font-weight: 800; font-size: 13px; }
+.alert-msg { font-size: 13px; color: #1e293b; margin-bottom: 8px; font-weight: 600; }
+.alert-meta { font-size: 11px; color: var(--text-muted); line-height: 1.5; margin-bottom: 10px; }
+.alert-actions { display: flex; gap: 8px; }
+
+/* Zone form */
+.form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 12px; }
+.form-group { display: flex; flex-direction: column; gap: 4px; }
+.form-group label { font-size: 11px; font-weight: 700; color: var(--text-muted); }
+.form-group input, .form-group select {
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  font-size: 13px;
+}
+
+/* Modal */
+.modal-overlay {
+  display: none;
+  position: fixed;
+  top: 0; left: 0; right: 0; bottom: 0;
+  background: rgba(15,23,42,0.6);
+  z-index: 999;
+  align-items: center;
+  justify-content: center;
+}
+.modal-overlay.active { display: flex; }
+.modal {
+  background: #fff;
+  border-radius: 16px;
+  padding: 24px;
+  width: 90%;
+  max-width: 500px;
+  box-shadow: 0 20px 25px -5px rgba(0,0,0,0.1);
+  max-height: 90vh;
+  overflow-y: auto;
+}
+.modal-title { font-size: 18px; font-weight: 800; margin-bottom: 14px; }
+.qr-preview {
+  text-align: center;
+  padding: 16px;
+  background: #f8fafc;
+  border-radius: 10px;
+  margin: 16px 0;
+}
+.qr-preview img { width: 180px; height: 180px; border-radius: 8px; border: 1px solid var(--border); }
+</style>
+</head>
+<body>
+
+<header>
+  <div>
+    <div class="eyebrow">SAFETY OPERATIONS / AI PREDICTIVE MONITORING SYSTEM</div>
+    <h1>Tourist Safety Authority Dashboard</h1>
+    <p>Live GPS Geofencing (SVIT College Ground) • DBSCAN Incident Hotspots • Predictive Safety Alerts</p>
+  </div>
+  <div class="header-actions">
+    <div class="pill">
+      <span class="dot" id="healthDot"></span>
+      <span id="healthStatus">Checking backend...</span>
+    </div>
+    <button class="btn btn-secondary" onclick="openIncidentModal()">+ Log Incident</button>
+    <button class="btn btn-success" onclick="openRegisterModal()">+ Register Tourist & QR</button>
+    <button class="btn btn-secondary" onclick="refreshAll()">Refresh Now</button>
+  </div>
+</header>
+
+<main>
+  <!-- Metrics Overview (6 Columns) -->
+  <section class="metrics-grid">
+    <div class="metric-card">
+      <div class="metric-label">Registered Tourists</div>
+      <div class="metric-value" id="countRegistered">—</div>
+      <div class="metric-sub">Active in database</div>
+    </div>
+    <div class="metric-card metric-safe">
+      <div class="metric-label">Safe Tourists</div>
+      <div class="metric-value" id="countSafe">—</div>
+      <div class="metric-sub">Outside restricted geofence</div>
+    </div>
+    <div class="metric-card metric-warning">
+      <div class="metric-label">Restricted Zone Tourists</div>
+      <div class="metric-value" id="countRestricted">—</div>
+      <div class="metric-sub">Inside SVIT Ground boundary</div>
+    </div>
+    <div class="metric-card metric-danger">
+      <div class="metric-label">Active SOS Alerts</div>
+      <div class="metric-value" id="countSOS">—</div>
+      <div class="metric-sub">Require authority response</div>
+    </div>
+    <div class="metric-card metric-ai">
+      <div class="metric-label">🤖 AI Hotspots (DBSCAN)</div>
+      <div class="metric-value" id="countHotspots">—</div>
+      <div class="metric-sub">Spatial high-risk clusters</div>
+    </div>
+    <div class="metric-card metric-incidents">
+      <div class="metric-label">⚠️ Historical Incidents</div>
+      <div class="metric-value" id="countIncidents">—</div>
+      <div class="metric-sub">Trained for predictive warnings</div>
+    </div>
+  </section>
+
+  <div class="content-grid">
+    <!-- Left Column: Live Map, Tourist Table, AI Incident Analysis -->
+    <div>
+      <div class="panel">
+        <div class="panel-header">
+          <div class="panel-title">📍 Live Operational Map & AI Hotspot Heatmap</div>
+          <span style="font-size:12px; color:var(--text-muted);" id="mapStatus">Loading geofence...</span>
+        </div>
+
+        <!-- Layer Toggles -->
+        <div class="layer-toggles">
+          <label><input type="checkbox" id="layerGeofence" checked onchange="toggleLayers()"> 🛡️ SVIT Geofence (50m)</label>
+          <label><input type="checkbox" id="layerHotspots" checked onchange="toggleLayers()"> 🤖 AI Hotspots (DBSCAN)</label>
+          <label><input type="checkbox" id="layerHeatmap" checked onchange="toggleLayers()"> 🔥 Incident Heatmap</label>
+          <label><input type="checkbox" id="layerIncidents" onchange="toggleLayers()"> 📌 Incident Pins</label>
+        </div>
+
+        <div id="mapContainer"></div>
+
+        <div style="font-size:12px; color:var(--text-muted); display:flex; justify-content:space-between; flex-wrap:wrap; gap:8px;">
+          <span>🔴 Red Circle: 50m Geofence | ⭕ Dashed Rings: AI Discovered Hotspots</span>
+          <span>🟢 Green: Safe | 🔴 Red: In Danger Zone | 🚨 Red Pulse: SOS</span>
+        </div>
+      </div>
+
+      <!-- Tourist Monitoring List with AI Risk Level -->
+      <div class="panel">
+        <div class="panel-header">
+          <div class="panel-title">👥 Tourist Monitoring & Predictive Risk Assessment</div>
+          <span style="font-size:12px; color:var(--text-muted);">Auto-refreshes every 3 seconds</span>
+        </div>
+        <div class="table-filter">
+          <input type="text" id="touristSearch" placeholder="🔍 Search by Tourist ID (e.g. T001) or Name..." oninput="filterTourists()" />
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Tourist ID</th>
+                <th>Name / Phone</th>
+                <th>Status</th>
+                <th>AI Predictive Risk</th>
+                <th>Coordinates</th>
+                <th>Distance to Zone</th>
+                <th>Last Update</th>
+                <th>QR</th>
+              </tr>
+            </thead>
+            <tbody id="touristsTableBody">
+              <tr><td colspan="8" style="text-align:center; padding:20px; color:#94a3b8;">Loading tourist updates...</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- AI Historical Incident Analysis & Hotspots Section -->
+      <div class="panel">
+        <div class="panel-header">
+          <div>
+            <div class="panel-title">🤖 AI-Based Historical Incident Analysis & Hotspots</div>
+            <div style="font-size:12px; color:var(--text-muted); margin-top:2px;">
+              DBSCAN machine learning model identifies spatial risk clusters to generate proactive early warning alerts
+            </div>
+          </div>
+          <div style="display:flex; gap:8px; align-items:center;">
+            <select id="incidentCategoryFilter" onchange="filterIncidentsTable()" style="padding:6px 10px; font-size:12px; border:1px solid var(--border); border-radius:6px;">
+              <option value="">All Categories</option>
+              <option value="Theft">Theft & Pickpocketing</option>
+              <option value="Harassment">Poor Lighting & Harassment</option>
+              <option value="Medical">Medical Distress</option>
+              <option value="Hazardous">Hazardous Terrain</option>
+              <option value="Scams">Touting & Scams</option>
+            </select>
+            <button class="btn btn-secondary" style="font-size:12px; padding:6px 12px;" onclick="openIncidentModal()">+ Log Incident</button>
+          </div>
+        </div>
+
+        <!-- Hotspots Cards Grid -->
+        <div style="font-weight:800; font-size:13px; margin-bottom:8px; color:var(--text-main);">
+          Discovered Spatial Hotspots (AI Clusters)
+        </div>
+        <div class="hotspots-grid" id="hotspotsContainer">
+          <div style="padding:14px; color:#94a3b8; font-size:12px;">Discovering historical incident clusters...</div>
+        </div>
+
+        <!-- Historical Incidents Table -->
+        <div style="font-weight:800; font-size:13px; margin-bottom:8px; color:var(--text-main); display:flex; justify-content:space-between;">
+          <span>Historical Incident Archive (<span id="incidentsTotalCount">0</span> records)</span>
+          <span style="font-size:11px; font-weight:600; color:#64748b;" id="aiAnalyticsSummary">—</span>
+        </div>
+        <div class="table-wrap" style="max-height:280px;">
+          <table>
+            <thead>
+              <tr>
+                <th>Category</th>
+                <th>Incident Details</th>
+                <th>Severity</th>
+                <th>Time / Hour</th>
+                <th>Coordinates</th>
+                <th>Action</th>
+              </tr>
+            </thead>
+            <tbody id="incidentsTableBody">
+              <tr><td colspan="6" style="text-align:center; padding:15px; color:#94a3b8;">Loading historical records...</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- Right Column: Emergency SOS & Geofence Config -->
+    <div>
+      <div class="panel">
+        <div class="panel-header">
+          <div class="panel-title">🚨 Emergency SOS Alerts</div>
+          <span class="badge badge-sos" id="alertsBadge">0 ACTIVE</span>
+        </div>
+        <div id="alertsContainer">
+          <div style="text-align:center; padding:24px; color:#94a3b8;">No active emergency alerts.</div>
+        </div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-header">
+          <div class="panel-title">🛡️ Geofence Boundary Settings</div>
+        </div>
+        <form id="geofenceForm" onsubmit="saveGeofence(event)">
+          <div class="form-group" style="margin-bottom:10px;">
+            <label>Zone Name</label>
+            <input type="text" id="geoName" value="SVIT College Ground" required />
+          </div>
+          <div class="form-grid">
+            <div class="form-group">
+              <label>Latitude</label>
+              <input type="number" step="any" id="geoLat" value="13.168130" required />
+            </div>
+            <div class="form-group">
+              <label>Longitude</label>
+              <input type="number" step="any" id="geoLon" value="77.558402" required />
+            </div>
+            <div class="form-group">
+              <label>Radius (Metres)</label>
+              <input type="number" step="any" id="geoRadius" value="50.0" required />
+            </div>
+            <div class="form-group">
+              <label>Zone Type</label>
+              <select id="geoZoneType">
+                <option value="danger">Danger / Restricted (Alert when inside)</option>
+                <option value="safe">Safe Area (Alert when outside)</option>
+              </select>
+            </div>
+          </div>
+          <button type="submit" class="btn" style="width:100%;">Save Geofence Settings</button>
+          <div id="geoSaveMsg" style="font-size:12px; text-align:center; margin-top:8px; color:var(--safe);"></div>
+        </form>
+      </div>
+
+      <!-- Quick AI Predictive Risk Simulator Panel -->
+      <div class="panel">
+        <div class="panel-header">
+          <div class="panel-title">🎯 AI Risk Predictor Simulator</div>
+        </div>
+        <div style="font-size:12px; color:var(--text-muted); margin-bottom:10px;">
+          Test how the AI predicts tourist safety risk based on simulated coordinates and time of day.
+        </div>
+        <div class="form-grid">
+          <div class="form-group">
+            <label>Simulated Latitude</label>
+            <input type="number" step="any" id="simLat" value="13.168580" />
+          </div>
+          <div class="form-group">
+            <label>Simulated Longitude</label>
+            <input type="number" step="any" id="simLon" value="77.558880" />
+          </div>
+          <div class="form-group">
+            <label>Simulated Hour (0-23)</label>
+            <input type="number" min="0" max="23" id="simHour" value="21" />
+          </div>
+          <div class="form-group" style="justify-content: flex-end;">
+            <button class="btn btn-success" type="button" onclick="runSimulatedRiskPrediction()" style="height:38px; width:100%;">Evaluate AI Risk</button>
+          </div>
+        </div>
+        <div id="simResultBox" style="display:none; background:#f8fafc; border:1px solid var(--border); border-radius:8px; padding:12px; margin-top:10px;">
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
+            <span style="font-weight:800; font-size:13px;" id="simRiskLabel">AI Risk Score</span>
+            <span class="badge" id="simBadge">LOW</span>
+          </div>
+          <div style="font-size:12px; font-weight:600; color:#b91c1c; margin-bottom:6px;" id="simAlertMsg"></div>
+          <div style="font-size:11px; color:var(--text-muted);" id="simDetailsMsg"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</main>
+
+<!-- Modal: Tourist Registration & QR Code -->
+<div class="modal-overlay" id="registerModal">
+  <div class="modal">
+    <div class="modal-title">Register New Tourist</div>
+    <form id="registerForm" onsubmit="handleRegister(event)">
+      <div class="form-group" style="margin-bottom:10px;">
+        <label>Tourist Full Name *</label>
+        <input type="text" id="regName" placeholder="e.g. John Doe" required />
+      </div>
+      <div class="form-group" style="margin-bottom:10px;">
+        <label>Phone Number</label>
+        <input type="tel" id="regPhone" placeholder="+91 9876543210" />
+      </div>
+      <div class="form-group" style="margin-bottom:16px;">
+        <label>Custom Tourist ID (Leave blank to auto-generate T001, T002...)</label>
+        <input type="text" id="regId" placeholder="Auto-generated (e.g. T001)" />
+      </div>
+      <div style="display:flex; justify-content:flex-end; gap:8px;">
+        <button type="button" class="btn btn-secondary" onclick="closeRegisterModal()">Cancel</button>
+        <button type="submit" class="btn btn-success">Register & Generate QR</button>
+      </div>
+    </form>
+
+    <div id="regSuccessView" style="display:none;">
+      <div style="text-align:center;">
+        <div style="font-size:14px; font-weight:800; color:var(--safe); margin-bottom:4px;">Registration Complete!</div>
+        <div style="font-size:12px; color:var(--text-muted);">Scan this QR Code with the Tourist Safety Mobile App:</div>
+      </div>
+      <div class="qr-preview">
+        <img id="regQrImg" src="" alt="Tourist QR Code" />
+        <div style="font-weight:800; font-size:16px; margin-top:8px;" id="regTouristIdLabel">T001</div>
+        <div style="font-size:12px; color:var(--text-muted);" id="regTouristNameLabel">John Doe</div>
+      </div>
+      <div style="display:flex; justify-content:center; gap:8px;">
+        <button class="btn btn-secondary" onclick="window.print()">🖨️ Print QR</button>
+        <button class="btn" onclick="closeRegisterModal()">Done</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Modal: View Existing QR Code -->
+<div class="modal-overlay" id="viewQrModal">
+  <div class="modal" style="text-align:center;">
+    <div class="modal-title" id="viewQrTitle">Tourist QR Code</div>
+    <div class="qr-preview">
+      <img id="viewQrImg" src="" alt="QR Code" />
+      <div style="font-weight:800; font-size:16px; margin-top:8px;" id="viewQrId">T001</div>
+    </div>
+    <div style="display:flex; justify-content:center; gap:8px;">
+      <button class="btn btn-secondary" onclick="window.print()">🖨️ Print QR</button>
+      <button class="btn" onclick="document.getElementById('viewQrModal').classList.remove('active')">Close</button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal: Log Historical Incident -->
+<div class="modal-overlay" id="incidentModal">
+  <div class="modal">
+    <div class="modal-title">Log Incident for Historical AI Analysis</div>
+    <form id="incidentForm" onsubmit="handleCreateIncident(event)">
+      <div class="form-group" style="margin-bottom:10px;">
+        <label>Incident Category *</label>
+        <select id="incType" required>
+          <option value="Theft & Pickpocketing">Theft & Pickpocketing</option>
+          <option value="Poor Lighting & Harassment">Poor Lighting & Harassment</option>
+          <option value="Medical Distress">Medical Distress / Injury</option>
+          <option value="Physical Altercation">Physical Altercation / Robbery</option>
+          <option value="Unauthorized Touting & Scams">Unauthorized Touting & Scams</option>
+          <option value="Unmarked Hazardous Terrain">Unmarked Hazardous Terrain / Slip</option>
+          <option value="Stray Animal Encounter">Stray Animal Encounter</option>
+          <option value="Lost Property & Belongings">Lost Property & Belongings</option>
+        </select>
+      </div>
+      <div class="form-group" style="margin-bottom:10px;">
+        <label>Incident Title *</label>
+        <input type="text" id="incTitle" placeholder="e.g. Bag snatched on North Pathway" required />
+      </div>
+      <div class="form-group" style="margin-bottom:10px;">
+        <label>Description</label>
+        <input type="text" id="incDesc" placeholder="Context, lighting, offender details..." />
+      </div>
+      <div class="form-grid">
+        <div class="form-group">
+          <label>Latitude *</label>
+          <input type="number" step="any" id="incLat" value="13.16858" required />
+        </div>
+        <div class="form-group">
+          <label>Longitude *</label>
+          <input type="number" step="any" id="incLon" value="77.55888" required />
+        </div>
+        <div class="form-group">
+          <label>Severity (1 = Minor, 5 = Critical) *</label>
+          <select id="incSeverity" required>
+            <option value="1">1 - Minor (Lost item, inquiry)</option>
+            <option value="2">2 - Low (Minor touting, noise)</option>
+            <option value="3" selected>3 - Moderate (Theft, tripping hazard)</option>
+            <option value="4">4 - High (Harassment, fracture injury)</option>
+            <option value="5">5 - Critical (Violent assault, armed)</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Time of Day</label>
+          <select id="incTimeOfDay">
+            <option value="Morning">Morning (06:00 - 12:00)</option>
+            <option value="Afternoon">Afternoon (12:00 - 17:00)</option>
+            <option value="Evening">Evening (17:00 - 20:00)</option>
+            <option value="Night" selected>Night (20:00 - 06:00)</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Reported Hour (0-23)</label>
+          <input type="number" min="0" max="23" id="incHour" value="21" required />
+        </div>
+        <div class="form-group">
+          <label>Incident Date</label>
+          <input type="date" id="incDate" required />
+        </div>
+      </div>
+      <div style="display:flex; justify-content:flex-end; gap:8px; margin-top:14px;">
+        <button type="button" class="btn btn-secondary" onclick="closeIncidentModal()">Cancel</button>
+        <button type="submit" class="btn btn-success">Save Incident</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- Leaflet Map JS & Leaflet Heat Plugin -->
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+<script src="https://unpkg.com/leaflet.heat@0.2.0/dist/leaflet-heat.js"></script>
+<script>
+const API_BASE = "";
+let map, geofenceCircle, geofenceMarker;
+let touristMarkers = {};
+let allTourists = [];
+let currentGeofence = null;
+
+// AI & Incident Layers
+let allIncidents = [];
+let allHotspots = [];
+let hotspotLayers = [];
+let incidentMarkerLayers = [];
+let heatLayer = null;
+
+// Initialize Map
+function initMap() {
+  const defaultLat = 13.168130;
+  const defaultLon = 77.558402;
+  map = L.map("mapContainer").setView([defaultLat, defaultLon], 17);
+
+  L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+    maxZoom: 19,
+    attribution: "© OpenStreetMap contributors"
+  }).addTo(map);
+
+  geofenceCircle = L.circle([defaultLat, defaultLon], {
+    color: "#dc2626",
+    fillColor: "#ef4444",
+    fillOpacity: 0.15,
+    radius: 50.0,
+    weight: 2
+  }).addTo(map);
+
+  geofenceMarker = L.marker([defaultLat, defaultLon]).addTo(map)
+    .bindPopup("<b>SVIT College Ground</b><br>Tourist Safety Monitoring Zone (50 m radius)");
+}
+
+// Layer Toggles
+function toggleLayers() {
+  if (!map) return;
+  const showGeo = document.getElementById("layerGeofence").checked;
+  const showHotspots = document.getElementById("layerHotspots").checked;
+  const showHeatmap = document.getElementById("layerHeatmap").checked;
+  const showIncidents = document.getElementById("layerIncidents").checked;
+
+  if (geofenceCircle) {
+    if (showGeo && !map.hasLayer(geofenceCircle)) geofenceCircle.addTo(map);
+    else if (!showGeo && map.hasLayer(geofenceCircle)) map.removeLayer(geofenceCircle);
+  }
+
+  hotspotLayers.forEach(l => {
+    if (showHotspots && !map.hasLayer(l)) l.addTo(map);
+    else if (!showHotspots && map.hasLayer(l)) map.removeLayer(l);
+  });
+
+  if (heatLayer) {
+    if (showHeatmap && !map.hasLayer(heatLayer)) heatLayer.addTo(map);
+    else if (!showHeatmap && map.hasLayer(heatLayer)) map.removeLayer(heatLayer);
+  }
+
+  incidentMarkerLayers.forEach(l => {
+    if (showIncidents && !map.hasLayer(l)) l.addTo(map);
+    else if (!showIncidents && map.hasLayer(l)) map.removeLayer(l);
+  });
+}
+
+// API Helper
+async function apiCall(endpoint, options = {}) {
+  const res = await fetch(API_BASE + endpoint, {
+    ...options,
+    headers: { "Content-Type": "application/json", ...(options.headers || {}) }
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: `HTTP ${res.status}` }));
+    throw new Error(err.detail || `Request failed (${res.status})`);
+  }
+  return res.json();
+}
+
+// Load Health
+async function loadHealth() {
+  try {
+    const data = await apiCall("/health");
+    document.getElementById("healthStatus").textContent = `Online · ${data.storage}`;
+    document.getElementById("healthDot").className = "dot online";
+  } catch (e) {
+    document.getElementById("healthStatus").textContent = "Backend Offline";
+    document.getElementById("healthDot").className = "dot offline";
+  }
+}
+
+// Load Geofence
+async function loadGeofence() {
+  try {
+    const geo = await apiCall("/geofence");
+    currentGeofence = geo;
+    document.getElementById("geoName").value = geo.name;
+    document.getElementById("geoLat").value = geo.latitude;
+    document.getElementById("geoLon").value = geo.longitude;
+    document.getElementById("geoRadius").value = geo.radius_meters;
+    document.getElementById("geoZoneType").value = geo.zone_type || "danger";
+    document.getElementById("mapStatus").textContent = `${geo.name} · ${geo.radius_meters} m radius`;
+
+    if (map && geofenceCircle) {
+      geofenceCircle.setLatLng([geo.latitude, geo.longitude]);
+      geofenceCircle.setRadius(geo.radius_meters);
+      geofenceMarker.setLatLng([geo.latitude, geo.longitude]);
+      geofenceMarker.setPopupContent(`<b>${geo.name}</b><br>Monitoring Zone (${geo.radius_meters} m)`);
+    }
+  } catch (e) {
+    console.error("Geofence load error:", e);
+  }
+}
+
+// Save Geofence
+async function saveGeofence(e) {
+  e.preventDefault();
+  const btn = e.target.querySelector("button[type=submit]");
+  btn.disabled = true;
+  try {
+    const payload = {
+      name: document.getElementById("geoName").value.trim(),
+      latitude: parseFloat(document.getElementById("geoLat").value),
+      longitude: parseFloat(document.getElementById("geoLon").value),
+      radius_meters: parseFloat(document.getElementById("geoRadius").value),
+      zone_type: document.getElementById("geoZoneType").value
+    };
+    await apiCall("/geofence", { method: "PUT", body: JSON.stringify(payload) });
+    document.getElementById("geoSaveMsg").textContent = "Geofence settings updated successfully!";
+    setTimeout(() => { document.getElementById("geoSaveMsg").textContent = ""; }, 3000);
+    await loadGeofence();
+  } catch (err) {
+    alert("Could not save geofence: " + err.message);
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+// Distance helper
+function calcDist(lat1, lon1, lat2, lon2) {
+  const R = 6371000;
+  const dLat = (lat2 - lat1) * Math.PI / 180;
+  const dLon = (lon2 - lon1) * Math.PI / 180;
+  const a = Math.sin(dLat/2) * Math.sin(dLat/2) +
+            Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+            Math.sin(dLon/2) * Math.sin(dLon/2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+  return R * c;
+}
+
+// Evaluate Tourist Risk Rating on frontend using loaded hotspots & incidents
+function evaluateTouristRisk(lat, lon) {
+  if (lat == null || lon == null || !allIncidents.length) {
+    return { score: 5, level: "LOW", badgeClass: "badge-risk-low", text: "LOW (5%)", alertMsg: "Area clear of incidents" };
+  }
+
+  let minDist = Infinity;
+  let nearestInc = null;
+  let points = 5;
+
+  allIncidents.forEach(inc => {
+    const d = calcDist(lat, lon, inc.latitude, inc.longitude);
+    if (d < minDist) {
+      minDist = d;
+      nearestInc = inc;
+    }
+    if (d <= 250) {
+      const decay = Math.exp(-d / 80);
+      points += (inc.severity || 3) * decay * 14;
+    }
+  });
+
+  const hour = new Date().getHours();
+  if (hour >= 19 || hour < 6) points *= 1.35; // Night risk boost
+
+  allHotspots.forEach(h => {
+    const d = calcDist(lat, lon, h.center_latitude, h.center_longitude);
+    if (d <= (h.radius_meters + 40)) {
+      points += (h.risk_level === "CRITICAL" ? 25 : h.risk_level === "HIGH" ? 15 : 8);
+    }
+  });
+
+  const score = Math.min(Math.round(points), 98);
+  let level = "LOW";
+  let badgeClass = "badge-risk-low";
+  let alertMsg = "Safe area with low incident history.";
+
+  if (score >= 75) {
+    level = "CRITICAL";
+    badgeClass = "badge-risk-critical";
+    alertMsg = `🚨 Critical Risk: ~${Math.round(minDist)}m from '${nearestInc ? nearestInc.title : 'Incident Hotspot'}'`;
+  } else if (score >= 50) {
+    level = "HIGH";
+    badgeClass = "badge-risk-high";
+    alertMsg = `⚠️ Elevated Risk: Near ${nearestInc ? nearestInc.incident_type : 'reported incidents'}`;
+  } else if (score >= 30) {
+    level = "MODERATE";
+    badgeClass = "badge-risk-moderate";
+    alertMsg = `ℹ️ Caution: Within ${Math.round(minDist)}m of past incident`;
+  }
+
+  return { score, level, badgeClass, text: `${level} (${score}%)`, alertMsg };
+}
+
+// Load Tourists
+async function loadTourists() {
+  try {
+    const data = await apiCall("/tourists");
+    allTourists = data.tourists || [];
+    document.getElementById("countRegistered").textContent = allTourists.length;
+
+    let safeCount = 0;
+    let restrictedCount = 0;
+
+    allTourists.forEach(t => {
+      const st = (t.status || "").toUpperCase();
+      if (st === "DANGER_ZONE" || t.inside_geofence === 1) {
+        restrictedCount++;
+      } else {
+        safeCount++;
+      }
+    });
+
+    document.getElementById("countSafe").textContent = safeCount;
+    document.getElementById("countRestricted").textContent = restrictedCount;
+
+    renderTouristsTable(allTourists);
+    updateMapMarkers(allTourists);
+  } catch (e) {
+    console.error("Tourists load error:", e);
+  }
+}
+
+// Update Markers on Map
+function updateMapMarkers(tourists) {
+  if (!map) return;
+  const currentIds = new Set(tourists.map(t => t.tourist_id));
+
+  // Remove markers no longer in list
+  Object.keys(touristMarkers).forEach(id => {
+    if (!currentIds.has(id)) {
+      map.removeLayer(touristMarkers[id]);
+      delete touristMarkers[id];
+    }
+  });
+
+  tourists.forEach(t => {
+    if (t.latitude == null || t.longitude == null) return;
+    const latLng = [t.latitude, t.longitude];
+    const isSos = (t.status || "").toUpperCase() === "SOS";
+    const isDanger = (t.status || "").toUpperCase() === "DANGER_ZONE" || t.inside_geofence === 1;
+
+    const risk = evaluateTouristRisk(t.latitude, t.longitude);
+    const color = isSos ? "#dc2626" : isDanger ? "#ef4444" : risk.score >= 70 ? "#ea580c" : "#16a34a";
+    const popupContent = `
+      <b>${t.tourist_id}</b> - ${t.name || "Tourist"}<br>
+      Status: <b>${t.status || "UNKNOWN"}</b><br>
+      AI Predictive Risk: <b style="color:${risk.score >= 50 ? '#dc2626' : '#16a34a'}">${risk.text}</b><br>
+      Distance to Geofence: ${t.distance_from_geofence_meters != null ? Math.round(t.distance_from_geofence_meters) + " m" : "—"}<br>
+      Coordinates: ${t.latitude.toFixed(5)}, ${t.longitude.toFixed(5)}<br>
+      Last Seen: ${t.last_updated ? new Date(t.last_updated).toLocaleTimeString() : "—"}<br>
+      <small style="color:#b91c1c;">${risk.alertMsg}</small>
+    `;
+
+    if (touristMarkers[t.tourist_id]) {
+      touristMarkers[t.tourist_id].setLatLng(latLng);
+      touristMarkers[t.tourist_id].setStyle({ fillColor: color });
+      touristMarkers[t.tourist_id].setPopupContent(popupContent);
+    } else {
+      const marker = L.circleMarker(latLng, {
+        radius: 8,
+        fillColor: color,
+        color: "#fff",
+        weight: 2,
+        opacity: 1,
+        fillOpacity: 0.95
+      }).addTo(map).bindPopup(popupContent);
+      touristMarkers[t.tourist_id] = marker;
+    }
+  });
+}
+
+// Render Tourists Table with AI Risk
+function renderTouristsTable(tourists) {
+  const tbody = document.getElementById("touristsTableBody");
+  if (!tourists.length) {
+    tbody.innerHTML = `<tr><td colspan="8" style="text-align:center; padding:20px; color:#94a3b8;">No tourists registered yet.</td></tr>`;
+    return;
+  }
+
+  tbody.innerHTML = tourists.map(t => {
+    const st = (t.status || "").toUpperCase();
+    let badgeClass = "badge badge-safe";
+    if (st === "SOS") badgeClass = "badge badge-sos";
+    else if (st === "DANGER_ZONE" || t.inside_geofence === 1) badgeClass = "badge badge-danger";
+    else if (st === "OUTSIDE_GEOFENCE") badgeClass = "badge badge-warning";
+
+    const risk = evaluateTouristRisk(t.latitude, t.longitude);
+
+    const coords = (t.latitude != null && t.longitude != null)
+      ? `${t.latitude.toFixed(5)}, ${t.longitude.toFixed(5)}`
+      : `<span style="color:#94a3b8;">No GPS</span>`;
+
+    const dist = t.distance_from_geofence_meters != null
+      ? `${Math.round(t.distance_from_geofence_meters)} m`
+      : "—";
+
+    const time = t.last_updated ? new Date(t.last_updated).toLocaleTimeString() : "—";
+
+    return `
+      <tr>
+        <td><strong>${t.tourist_id}</strong></td>
+        <td><div>${t.name || "—"}</div><small style="color:#64748b">${t.phone || ""}</small></td>
+        <td><span class="${badgeClass}">${t.status || "SAFE"}</span></td>
+        <td><span class="badge ${risk.badgeClass}" title="${risk.alertMsg}">${risk.text}</span></td>
+        <td><code>${coords}</code></td>
+        <td>${dist}</td>
+        <td>${time}</td>
+        <td><button class="btn btn-secondary" style="padding:4px 8px; font-size:11px;" onclick="showQrModal('${t.tourist_id}', '${t.name || ""}')">View QR</button></td>
+      </tr>
+    `;
+  }).join("");
+}
+
+function filterTourists() {
+  const q = document.getElementById("touristSearch").value.toLowerCase();
+  const filtered = allTourists.filter(t =>
+    t.tourist_id.toLowerCase().includes(q) || (t.name || "").toLowerCase().includes(q)
+  );
+  renderTouristsTable(filtered);
+}
+
+// Load AI Hotspots & Render on Map
+async function loadAiHotspots() {
+  try {
+    const data = await apiCall("/api/ai/hotspots");
+    allHotspots = data.hotspots || [];
+    document.getElementById("countHotspots").textContent = allHotspots.length;
+
+    // Remove existing hotspot layers
+    hotspotLayers.forEach(l => { if (map && map.hasLayer(l)) map.removeLayer(l); });
+    hotspotLayers = [];
+
+    const showHotspots = document.getElementById("layerHotspots").checked;
+
+    allHotspots.forEach(h => {
+      const color = h.risk_level === "CRITICAL" ? "#dc2626" : h.risk_level === "HIGH" ? "#ea580c" : "#d97706";
+      const circle = L.circle([h.center_latitude, h.center_longitude], {
+        color: color,
+        dashArray: "5, 5",
+        fillColor: color,
+        fillOpacity: 0.12,
+        radius: h.radius_meters,
+        weight: 2
+      }).bindPopup(`
+        <b>🤖 AI Incident Hotspot #${h.cluster_id}</b><br>
+        Risk Level: <b style="color:${color}">${h.risk_level}</b><br>
+        Primary Threat: <b>${h.primary_type}</b><br>
+        Total Incidents: <b>${h.incident_count}</b> (Avg Severity: ${h.avg_severity}/5)<br>
+        Cluster Radius: <b>${Math.round(h.radius_meters)} m</b><br>
+        <small style="color:#64748b">Sample: ${h.sample_incidents.join(", ")}</small>
+      `);
+
+      if (showHotspots && map) circle.addTo(map);
+      hotspotLayers.push(circle);
+    });
+
+    renderHotspotCards(allHotspots);
+  } catch (e) {
+    console.error("AI Hotspots load error:", e);
+  }
+}
+
+// Render Hotspot Summary Cards
+function renderHotspotCards(hotspots) {
+  const container = document.getElementById("hotspotsContainer");
+  if (!hotspots.length) {
+    container.innerHTML = `<div style="padding:14px; color:#94a3b8; font-size:12px;">No high-density incident clusters detected yet.</div>`;
+    return;
+  }
+
+  container.innerHTML = hotspots.map(h => {
+    const cls = h.risk_level.toLowerCase();
+    const badgeCls = h.risk_level === "CRITICAL" ? "badge-risk-critical" : h.risk_level === "HIGH" ? "badge-risk-high" : "badge-risk-moderate";
+    return `
+      <div class="hotspot-card ${cls}">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;">
+          <span style="font-size:12px; font-weight:800; color:#0f172a;">Hotspot #${h.cluster_id}</span>
+          <span class="badge ${badgeCls}">${h.risk_level}</span>
+        </div>
+        <div style="font-weight:700; font-size:13px; color:#1e293b; margin-bottom:4px;">${h.primary_type}</div>
+        <div style="font-size:11px; color:#64748b; line-height:1.4;">
+          Density: <b>${h.incident_count} incidents</b> within <b>${Math.round(h.radius_meters)}m</b> radius<br>
+          Avg Severity: <b>${h.avg_severity} / 5.0</b><br>
+          Coords: <code>${h.center_latitude.toFixed(5)}, ${h.center_longitude.toFixed(5)}</code>
+        </div>
+      </div>
+    `;
+  }).join("");
+}
+
+// Load Incidents & Heatmap
+async function loadIncidents() {
+  try {
+    const data = await apiCall("/api/ai/incidents");
+    allIncidents = data.incidents || [];
+    document.getElementById("countIncidents").textContent = allIncidents.length;
+    document.getElementById("incidentsTotalCount").textContent = allIncidents.length;
+
+    renderHeatmap(allIncidents);
+    renderIncidentMarkers(allIncidents);
+    filterIncidentsTable();
+  } catch (e) {
+    console.error("Incidents load error:", e);
+  }
+}
+
+// Render Heatmap using leaflet-heat
+function renderHeatmap(incidents) {
+  if (!map || typeof L.heatLayer !== "function") return;
+
+  if (heatLayer && map.hasLayer(heatLayer)) {
+    map.removeLayer(heatLayer);
+  }
+
+  const heatPoints = incidents.map(inc => [
+    inc.latitude,
+    inc.longitude,
+    (inc.severity || 3) / 5.0
+  ]);
+
+  heatLayer = L.heatLayer(heatPoints, {
+    radius: 35,
+    blur: 20,
+    maxZoom: 18,
+    max: 1.0,
+    gradient: { 0.2: "#3b82f6", 0.5: "#eab308", 0.75: "#f97316", 1.0: "#dc2626" }
+  });
+
+  const showHeat = document.getElementById("layerHeatmap").checked;
+  if (showHeat) heatLayer.addTo(map);
+}
+
+// Render Incident Pins
+function renderIncidentMarkers(incidents) {
+  if (!map) return;
+  incidentMarkerLayers.forEach(l => { if (map.hasLayer(l)) map.removeLayer(l); });
+  incidentMarkerLayers = [];
+
+  const showPins = document.getElementById("layerIncidents").checked;
+
+  incidents.forEach(inc => {
+    const marker = L.circleMarker([inc.latitude, inc.longitude], {
+      radius: 5,
+      fillColor: "#7c3aed",
+      color: "#ffffff",
+      weight: 1.5,
+      opacity: 0.9,
+      fillOpacity: 0.85
+    }).bindPopup(`
+      <b>${inc.title}</b><br>
+      Category: <b>${inc.incident_type}</b><br>
+      Severity: <b>${inc.severity}/5</b> | Time: <b>${inc.time_of_day} (${inc.reported_hour}:00)</b><br>
+      Date: <b>${inc.incident_date}</b><br>
+      <small style="color:#64748b">${inc.description || "Historical incident record"}</small>
+    `);
+
+    if (showPins) marker.addTo(map);
+    incidentMarkerLayers.push(marker);
+  });
+}
+
+// Render Incidents Table
+function filterIncidentsTable() {
+  const cat = document.getElementById("incidentCategoryFilter").value.toLowerCase();
+  const filtered = cat
+    ? allIncidents.filter(i => (i.incident_type || "").toLowerCase().includes(cat))
+    : allIncidents;
+
+  const tbody = document.getElementById("incidentsTableBody");
+  if (!filtered.length) {
+    tbody.innerHTML = `<tr><td colspan="6" style="text-align:center; padding:15px; color:#94a3b8;">No incidents matching filter.</td></tr>`;
+    return;
+  }
+
+  tbody.innerHTML = filtered.map(inc => {
+    const sevBadge = inc.severity >= 5 ? "badge-risk-critical" : inc.severity >= 4 ? "badge-risk-high" : inc.severity >= 3 ? "badge-risk-moderate" : "badge-risk-low";
+    return `
+      <tr>
+        <td><strong>${inc.incident_type}</strong></td>
+        <td>
+          <div style="font-weight:700;">${inc.title}</div>
+          <small style="color:#64748b;">${inc.description || ""}</small>
+        </td>
+        <td><span class="badge ${sevBadge}">${inc.severity} / 5</span></td>
+        <td>${inc.time_of_day} · ${inc.reported_hour}:00<br><small style="color:#94a3b8;">${inc.incident_date}</small></td>
+        <td><code>${inc.latitude.toFixed(5)}, ${inc.longitude.toFixed(5)}</code></td>
+        <td><button class="btn btn-secondary" style="padding:3px 7px; font-size:11px; color:#dc2626;" onclick="deleteIncident(${inc.id})">Delete</button></td>
+      </tr>
+    `;
+  }).join("");
+}
+
+// Load Analytics Summary
+async function loadAnalytics() {
+  try {
+    const data = await apiCall("/api/ai/analytics");
+    const a = data.analytics || {};
+    document.getElementById("aiAnalyticsSummary").textContent = `Top Threat: ${a.top_threat_category || '—'} • Peak Time: ${a.peak_time_of_day || '—'}`;
+  } catch (e) {
+    console.error("Analytics load error:", e);
+  }
+}
+
+// Delete Incident
+async function deleteIncident(id) {
+  if (!confirm(`Delete historical incident #${id}?`)) return;
+  try {
+    await apiCall(`/api/ai/incidents/${id}`, { method: "DELETE" });
+    await Promise.all([loadIncidents(), loadAiHotspots(), loadAnalytics()]);
+  } catch (e) {
+    alert("Could not delete incident: " + e.message);
+  }
+}
+
+// Log Incident Modal Handlers
+function openIncidentModal() {
+  document.getElementById("incidentForm").reset();
+  document.getElementById("incDate").value = new Date().toISOString().split("T")[0];
+  if (currentGeofence) {
+    document.getElementById("incLat").value = (currentGeofence.latitude + 0.00045).toFixed(6);
+    document.getElementById("incLon").value = (currentGeofence.longitude + 0.00045).toFixed(6);
+  }
+  document.getElementById("incidentModal").classList.add("active");
+}
+function closeIncidentModal() {
+  document.getElementById("incidentModal").classList.remove("active");
+}
+
+async function handleCreateIncident(e) {
+  e.preventDefault();
+  const payload = {
+    incident_type: document.getElementById("incType").value,
+    title: document.getElementById("incTitle").value.trim(),
+    description: document.getElementById("incDesc").value.trim(),
+    latitude: parseFloat(document.getElementById("incLat").value),
+    longitude: parseFloat(document.getElementById("incLon").value),
+    severity: parseInt(document.getElementById("incSeverity").value, 10),
+    time_of_day: document.getElementById("incTimeOfDay").value,
+    reported_hour: parseInt(document.getElementById("incHour").value, 10),
+    incident_date: document.getElementById("incDate").value
+  };
+
+  try {
+    await apiCall("/api/ai/incidents", {
+      method: "POST",
+      body: JSON.stringify(payload)
+    });
+    closeIncidentModal();
+    await Promise.all([loadIncidents(), loadAiHotspots(), loadAnalytics()]);
+    alert("Historical incident logged successfully! AI Hotspots updated.");
+  } catch (err) {
+    alert("Failed to save incident: " + err.message);
+  }
+}
+
+// AI Simulator Runner
+async function runSimulatedRiskPrediction() {
+  const lat = parseFloat(document.getElementById("simLat").value);
+  const lon = parseFloat(document.getElementById("simLon").value);
+  const hour = parseInt(document.getElementById("simHour").value, 10);
+
+  try {
+    const res = await apiCall("/api/ai/predict-risk", {
+      method: "POST",
+      body: JSON.stringify({ latitude: lat, longitude: lon, current_hour: hour })
+    });
+    const p = res.prediction;
+    const box = document.getElementById("simResultBox");
+    box.style.display = "block";
+
+    document.getElementById("simRiskLabel").textContent = `Predictive Risk: ${p.risk_score}%`;
+    const badge = document.getElementById("simBadge");
+    badge.textContent = p.risk_level;
+    badge.className = "badge " + (p.risk_level === "CRITICAL" ? "badge-risk-critical" : p.risk_level === "HIGH" ? "badge-risk-high" : p.risk_level === "MODERATE" ? "badge-risk-moderate" : "badge-risk-low");
+
+    document.getElementById("simAlertMsg").textContent = p.predictive_alert || "🟢 Safe Zone: No early warning triggered.";
+    document.getElementById("simDetailsMsg").textContent = `Nearest incident: ${p.nearest_incident ? p.nearest_incident.title : 'None'} (${p.nearest_incident_meters ? Math.round(p.nearest_incident_meters) + 'm away' : 'None'}) • ${p.time_factor}`;
+  } catch (err) {
+    alert("Simulation failed: " + err.message);
+  }
+}
+
+// Load Alerts
+async function loadAlerts() {
+  try {
+    const data = await apiCall("/alerts");
+    const alerts = data.alerts || [];
+    const active = alerts.filter(a => (a.status || "").toUpperCase() === "ACTIVE");
+
+    document.getElementById("countSOS").textContent = active.length;
+    document.getElementById("alertsBadge").textContent = `${active.length} ACTIVE`;
+
+    const container = document.getElementById("alertsContainer");
+    if (!alerts.length) {
+      container.innerHTML = `<div style="text-align:center; padding:24px; color:#94a3b8;">No emergency alerts recorded.</div>`;
+      return;
+    }
+
+    container.innerHTML = alerts.map(a => {
+      const isAct = (a.status || "").toUpperCase() === "ACTIVE";
+      const isAck = (a.status || "").toUpperCase() === "ACKNOWLEDGED";
+      return `
+        <div class="alert-card" style="border-left-color: ${isAct ? 'var(--danger)' : isAck ? 'var(--warning)' : 'var(--safe)'}; background:${isAct ? '#fffafa' : '#fff'};">
+          <div class="alert-top">
+            <span class="alert-id">🚨 Alert #${a.id} · Tourist <strong>${a.tourist_id}</strong></span>
+            <span class="badge ${isAct ? 'badge-sos' : isAck ? 'badge-warning' : 'badge-safe'}">${a.status}</span>
+          </div>
+          <div class="alert-msg">${a.message || "Emergency SOS activated"}</div>
+          <div class="alert-meta">
+            Time: ${new Date(a.time).toLocaleString()}<br>
+            Coordinates: <code>${a.latitude.toFixed(6)}, ${a.longitude.toFixed(6)}</code> (Accuracy: ±${Math.round(a.accuracy || 0)} m)<br>
+            Distance to Geofence: ${a.distance_from_geofence_meters != null ? Math.round(a.distance_from_geofence_meters) + " m" : "—"}
+          </div>
+          <div class="alert-actions">
+            ${isAct ? `<button class="btn btn-secondary" style="font-size:11px; padding:6px 10px;" onclick="ackAlert(${a.id})">Acknowledge</button>` : ''}
+            ${isAct || isAck ? `<button class="btn btn-success" style="font-size:11px; padding:6px 10px;" onclick="resolveAlert(${a.id})">Resolve & Clear</button>` : '<span style="font-size:11px; color:var(--safe); font-weight:700;">✓ Resolved</span>'}
+          </div>
+        </div>
+      `;
+    }).join("");
+  } catch (e) {
+    console.error("Alerts load error:", e);
+  }
+}
+
+async function ackAlert(id) {
+  try {
+    await apiCall(`/alerts/${id}/acknowledge`, { method: "POST" });
+    await loadAlerts();
+    await loadTourists();
+  } catch (e) {
+    alert("Could not acknowledge alert: " + e.message);
+  }
+}
+
+async function resolveAlert(id) {
+  try {
+    await apiCall(`/alerts/${id}/resolve`, { method: "POST" });
+    await loadAlerts();
+    await loadTourists();
+  } catch (e) {
+    alert("Could not resolve alert: " + e.message);
+  }
+}
+
+// Registration Modal
+function openRegisterModal() {
+  document.getElementById("registerForm").reset();
+  document.getElementById("registerForm").style.display = "block";
+  document.getElementById("regSuccessView").style.display = "none";
+  document.getElementById("registerModal").classList.add("active");
+}
+function closeRegisterModal() {
+  document.getElementById("registerModal").classList.remove("active");
+}
+
+async function handleRegister(e) {
+  e.preventDefault();
+  const name = document.getElementById("regName").value.trim();
+  const phone = document.getElementById("regPhone").value.trim();
+  const tourist_id = document.getElementById("regId").value.trim();
+
+  try {
+    const data = await apiCall("/register", {
+      method: "POST",
+      body: JSON.stringify({ name, phone, tourist_id: tourist_id || null })
+    });
+    document.getElementById("registerForm").style.display = "none";
+    document.getElementById("regSuccessView").style.display = "block";
+    document.getElementById("regQrImg").src = `${API_BASE}/qr/${data.tourist_id}?t=${Date.now()}`;
+    document.getElementById("regTouristIdLabel").textContent = `ID: ${data.tourist_id}`;
+    document.getElementById("regTouristNameLabel").textContent = `${data.name} (${phone || "No phone"})`;
+    await loadTourists();
+  } catch (err) {
+    alert("Registration failed: " + err.message);
+  }
+}
+
+function showQrModal(id, name) {
+  document.getElementById("viewQrTitle").textContent = `Tourist QR Code · ${name || id}`;
+  document.getElementById("viewQrId").textContent = `Tourist ID: ${id}`;
+  document.getElementById("viewQrImg").src = `${API_BASE}/qr/${id}?t=${Date.now()}`;
+  document.getElementById("viewQrModal").classList.add("active");
+}
+
+// Master Refresh Loop
+async function refreshAll() {
+  await Promise.allSettled([
+    loadHealth(),
+    loadGeofence(),
+    loadTourists(),
+    loadAlerts(),
+    loadAiHotspots(),
+    loadIncidents(),
+    loadAnalytics()
+  ]);
+}
+
+window.addEventListener("DOMContentLoaded", () => {
+  initMap();
+  refreshAll();
+  setInterval(refreshAll, 3000);
+});
+</script>
+</body>
+</html>

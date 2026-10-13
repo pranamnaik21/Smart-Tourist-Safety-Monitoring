@@ -1,0 +1,3011 @@
+﻿TOURIST SAFETY CODE INSPECTION - 10/09/2026 12:19:49
+
+========== FILE: C:\TouristSafety\backend\main.py ==========
+
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
+from pydantic import BaseModel
+from datetime import datetime
+from math import radians, sin, cos, sqrt, atan2
+from typing import Optional
+from pathlib import Path
+
+
+# ============================================================
+# APPLICATION
+# ============================================================
+
+app = FastAPI(
+    title="Tourist Safety Monitoring System",
+    description="Real-time tourist tracking and emergency monitoring backend",
+    version="1.0.0",
+)
+
+
+# ============================================================
+# CORS
+# ============================================================
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+
+# ============================================================
+# SYSTEM CONFIGURATION
+# ============================================================
+
+SYSTEM_NAME = "Tourist Safety Monitoring System"
+SERVER_VERSION = "1.0.0"
+
+GEOFENCE_RADIUS_METERS = 50.0
+
+# Bengaluru demonstration geofence
+GEOFENCE_CENTER_LATITUDE = 12.9716
+GEOFENCE_CENTER_LONGITUDE = 77.5946
+
+
+# ============================================================
+# IN-MEMORY DATABASE
+# ============================================================
+
+tourists = {}
+alerts = []
+location_history = {}
+
+
+# ============================================================
+# DATA MODELS
+# ============================================================
+
+class LocationData(BaseModel):
+    tourist_id: str
+    latitude: float
+    longitude: float
+    accuracy: Optional[float] = None
+    status: str = "SAFE"
+
+
+class SOSData(BaseModel):
+    tourist_id: str
+    latitude: float
+    longitude: float
+    accuracy: Optional[float] = None
+    message: str = "Emergency SOS activated"
+
+
+class StatusUpdate(BaseModel):
+    tourist_id: str
+    status: str
+
+
+# ============================================================
+# DISTANCE CALCULATION
+# ============================================================
+
+def calculate_distance_meters(
+    latitude1,
+    longitude1,
+    latitude2,
+    longitude2
+):
+    earth_radius = 6371000
+
+    latitude1_radians = radians(latitude1)
+    latitude2_radians = radians(latitude2)
+
+    difference_latitude = radians(
+        latitude2 - latitude1
+    )
+
+    difference_longitude = radians(
+        longitude2 - longitude1
+    )
+
+    a = (
+        sin(difference_latitude / 2) ** 2
+        +
+        cos(latitude1_radians)
+        *
+        cos(latitude2_radians)
+        *
+        sin(difference_longitude / 2) ** 2
+    )
+
+    c = 2 * atan2(
+        sqrt(a),
+        sqrt(1 - a)
+    )
+
+    distance = earth_radius * c
+
+    return distance
+
+
+# ============================================================
+# GEOFENCE
+# ============================================================
+
+def check_geofence(latitude, longitude):
+
+    distance = calculate_distance_meters(
+        latitude,
+        longitude,
+        GEOFENCE_CENTER_LATITUDE,
+        GEOFENCE_CENTER_LONGITUDE
+    )
+
+    inside = distance <= GEOFENCE_RADIUS_METERS
+
+    if inside:
+        status = "SAFE"
+    else:
+        status = "OUTSIDE_GEOFENCE"
+
+    return {
+        "inside": inside,
+        "status": status,
+        "distance_meters": round(distance, 2),
+        "radius_meters": GEOFENCE_RADIUS_METERS,
+        "center": {
+            "latitude": GEOFENCE_CENTER_LATITUDE,
+            "longitude": GEOFENCE_CENTER_LONGITUDE
+        }
+    }
+
+
+# ============================================================
+# ROOT
+# ============================================================
+
+@app.get("/")
+def root():
+
+    return {
+        "project": SYSTEM_NAME,
+        "status": "Backend running",
+        "version": SERVER_VERSION,
+        "message": "Tourist Safety Monitoring System API is online",
+        "endpoints": [
+            "/",
+            "/health",
+            "/location",
+            "/sos",
+            "/tourists",
+            "/tourists/{tourist_id}",
+            "/alerts",
+            "/history",
+            "/history/{tourist_id}",
+            "/geofence",
+            "/clear",
+            "/dashboard"
+        ]
+    }
+
+
+# ============================================================
+# HEALTH CHECK
+# ============================================================
+
+@app.get("/health")
+def health():
+
+    return {
+        "status": "healthy",
+        "backend": "online",
+        "tourists": len(tourists),
+        "alerts": len(alerts),
+        "time": datetime.now().isoformat()
+    }
+
+
+# ============================================================
+# GEOFENCE INFORMATION
+# ============================================================
+
+@app.get("/geofence")
+def get_geofence():
+
+    return {
+        "latitude": GEOFENCE_CENTER_LATITUDE,
+        "longitude": GEOFENCE_CENTER_LONGITUDE,
+        "radius_meters": GEOFENCE_RADIUS_METERS
+    }
+
+
+# ============================================================
+# RECEIVE LOCATION
+# ============================================================
+
+@app.post("/location")
+def receive_location(data: LocationData):
+
+    geofence = check_geofence(
+        data.latitude,
+        data.longitude
+    )
+
+    timestamp = datetime.now().isoformat()
+
+    tourist = {
+        "tourist_id": data.tourist_id,
+        "latitude": data.latitude,
+        "longitude": data.longitude,
+        "accuracy": data.accuracy,
+        "status": geofence["status"],
+        "inside_geofence": geofence["inside"],
+        "distance_from_geofence_meters": geofence["distance_meters"],
+        "last_updated": timestamp
+    }
+
+    tourists[data.tourist_id] = tourist
+
+
+    # --------------------------------------------------------
+    # LOCATION HISTORY
+    # --------------------------------------------------------
+
+    if data.tourist_id not in location_history:
+        location_history[data.tourist_id] = []
+
+    location_history[data.tourist_id].append(
+        {
+            "latitude": data.latitude,
+            "longitude": data.longitude,
+            "accuracy": data.accuracy,
+            "status": geofence["status"],
+            "time": timestamp
+        }
+    )
+
+
+    # Keep latest 100 locations
+    if len(location_history[data.tourist_id]) > 100:
+        location_history[data.tourist_id] = (
+            location_history[data.tourist_id][-100:]
+        )
+
+
+    return {
+        "success": True,
+        "message": "Location received",
+        "tourist": tourist,
+        "geofence": geofence
+    }
+
+
+# ============================================================
+# RECEIVE SOS
+# ============================================================
+
+@app.post("/sos")
+def receive_sos(data: SOSData):
+
+    timestamp = datetime.now().isoformat()
+
+    geofence = check_geofence(
+        data.latitude,
+        data.longitude
+    )
+
+    alert = {
+        "id": len(alerts) + 1,
+        "tourist_id": data.tourist_id,
+        "latitude": data.latitude,
+        "longitude": data.longitude,
+        "accuracy": data.accuracy,
+        "message": data.message,
+        "time": timestamp,
+        "status": "ACTIVE",
+        "inside_geofence": geofence["inside"],
+        "distance_from_geofence_meters": geofence["distance_meters"]
+    }
+
+    alerts.append(alert)
+
+
+    if data.tourist_id in tourists:
+
+        tourists[data.tourist_id]["status"] = "SOS"
+
+        tourists[data.tourist_id]["last_updated"] = timestamp
+
+
+    return {
+        "success": True,
+        "message": "SOS received by authority",
+        "alert": alert
+    }
+
+
+# ============================================================
+# GET ALL TOURISTS
+# ============================================================
+
+@app.get("/tourists")
+def get_tourists():
+
+    return {
+        "count": len(tourists),
+        "tourists": list(tourists.values())
+    }
+
+
+# ============================================================
+# GET SINGLE TOURIST
+# ============================================================
+
+@app.get("/tourists/{tourist_id}")
+def get_tourist(tourist_id: str):
+
+    if tourist_id not in tourists:
+
+        return {
+            "success": False,
+            "message": "Tourist not found"
+        }
+
+    return {
+        "success": True,
+        "tourist": tourists[tourist_id]
+    }
+
+
+# ============================================================
+# GET ALERTS
+# ============================================================
+
+@app.get("/alerts")
+def get_alerts():
+
+    return {
+        "count": len(alerts),
+        "alerts": alerts
+    }
+
+
+# ============================================================
+# GET ALL HISTORY
+# ============================================================
+
+@app.get("/history")
+def get_history():
+
+    return {
+        "history": location_history
+    }
+
+
+# ============================================================
+# GET TOURIST HISTORY
+# ============================================================
+
+@app.get("/history/{tourist_id}")
+def get_tourist_history(tourist_id: str):
+
+    return {
+        "tourist_id": tourist_id,
+        "locations": location_history.get(
+            tourist_id,
+            []
+        )
+    }
+
+
+# ============================================================
+# CLEAR TEMPORARY DATA
+# ============================================================
+
+@app.delete("/clear")
+def clear_data():
+
+    tourists.clear()
+    alerts.clear()
+    location_history.clear()
+
+    return {
+        "success": True,
+        "message": "All temporary data cleared"
+    }
+
+
+# ============================================================
+# DASHBOARD
+# ============================================================
+
+@app.get("/dashboard")
+def dashboard():
+
+    dashboard_path = Path(__file__).parent / "dashboard.html"
+
+    return FileResponse(
+        dashboard_path
+    )
+
+
+# ============================================================
+# LOCAL DIRECT EXECUTION
+# ============================================================
+
+if __name__ == "__main__":
+
+    import uvicorn
+
+    uvicorn.run(
+        "main:app",
+        host="0.0.0.0",
+        port=8000,
+        reload=False
+    )
+
+
+========== FILE: C:\TouristSafety\backend\requirements.txt ==========
+
+fastapi
+uvicorn[standard]
+
+
+========== FILE: C:\TouristSafety\backend\dashboard.html ==========
+
+<!DOCTYPE html>
+
+<html lang="en">
+
+<head>
+
+<meta charset="UTF-8">
+
+<meta
+    name="viewport"
+    content="width=device-width, initial-scale=1.0"
+>
+
+<title>
+Tourist Safety Monitoring System
+</title>
+
+<style>
+
+* {
+    box-sizing: border-box;
+}
+
+body {
+
+    margin: 0;
+
+    font-family:
+        Arial,
+        Helvetica,
+        sans-serif;
+
+    background: #f1f5f9;
+
+    color: #0f172a;
+}
+
+header {
+
+    background: #0f172a;
+
+    color: white;
+
+    padding: 22px;
+
+}
+
+header h1 {
+
+    margin: 0 0 6px 0;
+
+    font-size: 26px;
+}
+
+header p {
+
+    margin: 0;
+
+    color: #cbd5e1;
+}
+
+.container {
+
+    max-width: 1400px;
+
+    margin: auto;
+
+    padding: 25px;
+}
+
+.cards {
+
+    display: grid;
+
+    grid-template-columns:
+        repeat(
+            auto-fit,
+            minmax(200px, 1fr)
+        );
+
+    gap: 18px;
+
+    margin-bottom: 25px;
+}
+
+.card {
+
+    background: white;
+
+    border-radius: 12px;
+
+    padding: 22px;
+
+    box-shadow:
+        0 4px 15px
+        rgba(
+            15,
+            23,
+            42,
+            0.08
+        );
+}
+
+.card-title {
+
+    color: #64748b;
+
+    font-size: 14px;
+
+    margin-bottom: 8px;
+}
+
+.card-value {
+
+    font-size: 30px;
+
+    font-weight: bold;
+}
+
+.section {
+
+    background: white;
+
+    border-radius: 12px;
+
+    padding: 22px;
+
+    margin-bottom: 25px;
+
+    box-shadow:
+        0 4px 15px
+        rgba(
+            15,
+            23,
+            42,
+            0.08
+        );
+}
+
+.section h2 {
+
+    margin-top: 0;
+}
+
+table {
+
+    width: 100%;
+
+    border-collapse: collapse;
+}
+
+th,
+td {
+
+    padding: 12px;
+
+    border-bottom:
+        1px solid #e2e8f0;
+
+    text-align: left;
+
+    font-size: 14px;
+}
+
+th {
+
+    background: #f8fafc;
+}
+
+.badge {
+
+    display: inline-block;
+
+    padding:
+        5px 10px;
+
+    border-radius: 999px;
+
+    font-weight: bold;
+
+    font-size: 12px;
+}
+
+.safe {
+
+    background: #dcfce7;
+
+    color: #166534;
+}
+
+.outside {
+
+    background: #fef3c7;
+
+    color: #92400e;
+}
+
+.sos {
+
+    background: #fee2e2;
+
+    color: #991b1b;
+}
+
+.empty {
+
+    padding: 25px;
+
+    text-align: center;
+
+    color: #64748b;
+}
+
+.status {
+
+    margin-top: 8px;
+
+    font-size: 13px;
+
+    color: #64748b;
+}
+
+.refresh {
+
+    margin-top: 8px;
+
+    color: #64748b;
+
+    font-size: 13px;
+}
+
+@media (
+    max-width: 800px
+) {
+
+    .container {
+
+        padding: 12px;
+    }
+
+    th,
+    td {
+
+        font-size: 12px;
+
+        padding: 8px;
+    }
+
+}
+
+</style>
+
+</head>
+
+<body>
+
+<header>
+
+<h1>
+Tourist Safety Monitoring System
+</h1>
+
+<p>
+Authority Monitoring Dashboard
+</p>
+
+</header>
+
+
+<div class="container">
+
+
+<div class="cards">
+
+
+<div class="card">
+
+<div class="card-title">
+Registered Tourists
+</div>
+
+<div
+    class="card-value"
+    id="touristCount"
+>
+0
+</div>
+
+</div>
+
+
+<div class="card">
+
+<div class="card-title">
+Active SOS Alerts
+</div>
+
+<div
+    class="card-value"
+    id="alertCount"
+>
+0
+</div>
+
+</div>
+
+
+<div class="card">
+
+<div class="card-title">
+Geofence Radius
+</div>
+
+<div
+    class="card-value"
+    id="geofenceRadius"
+>
+-
+</div>
+
+</div>
+
+
+<div class="card">
+
+<div class="card-title">
+Backend
+</div>
+
+<div
+    class="card-value"
+    id="backendStatus"
+>
+Checking...
+</div>
+
+</div>
+
+
+</div>
+
+
+<div class="section">
+
+<h2>
+Live Tourists
+</h2>
+
+<div id="touristTable">
+
+<div class="empty">
+Waiting for tourist location...
+</div>
+
+</div>
+
+</div>
+
+
+<div class="section">
+
+<h2>
+Emergency SOS Alerts
+</h2>
+
+<div id="alertTable">
+
+<div class="empty">
+No emergency alerts
+</div>
+
+</div>
+
+</div>
+
+
+<div class="section">
+
+<h2>
+System Information
+</h2>
+
+<div class="status">
+
+System:
+Tourist Safety Monitoring System
+
+</div>
+
+<div class="status">
+
+Geofence:
+50 metre demonstration zone
+
+</div>
+
+<div class="refresh">
+
+Last refresh:
+<span id="lastRefresh">
+-
+</span>
+
+</div>
+
+</div>
+
+
+</div>
+
+
+<script>
+
+const API = "";
+
+
+function escapeHtml(value) {
+
+    if (
+        value === null ||
+        value === undefined
+    ) {
+
+        return "";
+
+    }
+
+    return String(value)
+        .replace(
+            /&/g,
+            "&amp;"
+        )
+        .replace(
+            /</g,
+            "&lt;"
+        )
+        .replace(
+            />/g,
+            "&gt;"
+        )
+        .replace(
+            /"/g,
+            "&quot;"
+        )
+        .replace(
+            /'/g,
+            "&#039;"
+        );
+}
+
+
+function formatNumber(
+    value,
+    decimals = 6
+) {
+
+    const number = Number(value);
+
+    if (
+        Number.isNaN(number)
+    ) {
+
+        return "-";
+
+    }
+
+    return number.toFixed(
+        decimals
+    );
+}
+
+
+function statusBadge(status) {
+
+    const safeStatus =
+        String(status || "")
+            .toUpperCase();
+
+    if (
+        safeStatus === "SOS"
+    ) {
+
+        return 
+            <span class="badge sos">
+                SOS
+            </span>
+        ;
+
+    }
+
+    if (
+        safeStatus === "SAFE"
+    ) {
+
+        return 
+            <span class="badge safe">
+                SAFE
+            </span>
+        ;
+
+    }
+
+    return 
+        <span class="badge outside">
+            
+        </span>
+    ;
+}
+
+
+async function checkHealth() {
+
+    try {
+
+        const response =
+            await fetch(
+                API + "/health"
+            );
+
+        if (
+            !response.ok
+        ) {
+
+            throw new Error(
+                "Backend error"
+            );
+
+        }
+
+        document
+            .getElementById(
+                "backendStatus"
+            )
+            .textContent =
+            "ONLINE";
+
+    }
+
+    catch (error) {
+
+        document
+            .getElementById(
+                "backendStatus"
+            )
+            .textContent =
+            "OFFLINE";
+
+    }
+}
+
+
+async function loadGeofence() {
+
+    try {
+
+        const response =
+            await fetch(
+                API + "/geofence"
+            );
+
+        const data =
+            await response.json();
+
+        document
+            .getElementById(
+                "geofenceRadius"
+            )
+            .textContent =
+            data.radius_meters + "m";
+
+    }
+
+    catch (error) {
+
+        document
+            .getElementById(
+                "geofenceRadius"
+            )
+            .textContent =
+            "-";
+
+    }
+}
+
+
+async function loadTourists() {
+
+    try {
+
+        const response =
+            await fetch(
+                API + "/tourists"
+            );
+
+        const data =
+            await response.json();
+
+        const tourists =
+            data.tourists || [];
+
+        document
+            .getElementById(
+                "touristCount"
+            )
+            .textContent =
+            tourists.length;
+
+        const container =
+            document.getElementById(
+                "touristTable"
+            );
+
+        if (
+            tourists.length === 0
+        ) {
+
+            container.innerHTML = 
+                <div class="empty">
+                    No tourist location received yet.
+                </div>
+            ;
+
+            return;
+
+        }
+
+        let html = 
+
+        <table>
+
+        <thead>
+
+        <tr>
+
+        <th>
+        Tourist ID
+        </th>
+
+        <th>
+        Latitude
+        </th>
+
+        <th>
+        Longitude
+        </th>
+
+        <th>
+        Accuracy
+        </th>
+
+        <th>
+        Status
+        </th>
+
+        <th>
+        Geofence
+        </th>
+
+        <th>
+        Last Updated
+        </th>
+
+        </tr>
+
+        </thead>
+
+        <tbody>
+        ;
+
+
+        for (
+            const tourist of tourists
+        ) {
+
+            html += 
+
+            <tr>
+
+            <td>
+                
+            </td>
+
+            <td>
+                
+            </td>
+
+            <td>
+                
+            </td>
+
+            <td>
+                 m
+            </td>
+
+            <td>
+                
+            </td>
+
+            <td>
+                
+            </td>
+
+            <td>
+                
+            </td>
+
+            </tr>
+
+            ;
+
+        }
+
+
+        html += 
+
+        </tbody>
+
+        </table>
+
+        ;
+
+        container.innerHTML =
+            html;
+
+    }
+
+    catch (error) {
+
+        document
+            .getElementById(
+                "touristTable"
+            )
+            .innerHTML = 
+
+            <div class="empty">
+
+            Unable to load tourist data.
+
+            </div>
+
+            ;
+
+    }
+
+}
+
+
+async function loadAlerts() {
+
+    try {
+
+        const response =
+            await fetch(
+                API + "/alerts"
+            );
+
+        const data =
+            await response.json();
+
+        const alerts =
+            data.alerts || [];
+
+        document
+            .getElementById(
+                "alertCount"
+            )
+            .textContent =
+            alerts.length;
+
+        const container =
+            document.getElementById(
+                "alertTable"
+            );
+
+        if (
+            alerts.length === 0
+        ) {
+
+            container.innerHTML = 
+                <div class="empty">
+                    No emergency SOS alerts.
+                </div>
+            ;
+
+            return;
+
+        }
+
+
+        let html = 
+
+        <table>
+
+        <thead>
+
+        <tr>
+
+        <th>
+        Alert
+        </th>
+
+        <th>
+        Tourist ID
+        </th>
+
+        <th>
+        Latitude
+        </th>
+
+        <th>
+        Longitude
+        </th>
+
+        <th>
+        Message
+        </th>
+
+        <th>
+        Status
+        </th>
+
+        <th>
+        Time
+        </th>
+
+        </tr>
+
+        </thead>
+
+        <tbody>
+        ;
+
+
+        for (
+            const alert of alerts
+        ) {
+
+            html += 
+
+            <tr>
+
+            <td>
+                #
+            </td>
+
+            <td>
+                
+            </td>
+
+            <td>
+                
+            </td>
+
+            <td>
+                
+            </td>
+
+            <td>
+                
+            </td>
+
+            <td>
+                
+            </td>
+
+            <td>
+                
+            </td>
+
+            </tr>
+
+            ;
+
+        }
+
+
+        html += 
+
+        </tbody>
+
+        </table>
+
+        ;
+
+        container.innerHTML =
+            html;
+
+    }
+
+    catch (error) {
+
+        document
+            .getElementById(
+                "alertTable"
+            )
+            .innerHTML = 
+
+            <div class="empty">
+
+            Unable to load alert data.
+
+            </div>
+
+            ;
+
+    }
+
+}
+
+
+async function refreshDashboard() {
+
+    await Promise.all(
+        [
+            checkHealth(),
+            loadGeofence(),
+            loadTourists(),
+            loadAlerts()
+        ]
+    );
+
+    document
+        .getElementById(
+            "lastRefresh"
+        )
+        .textContent =
+        new Date()
+            .toLocaleString();
+
+}
+
+
+refreshDashboard();
+
+setInterval(
+    refreshDashboard,
+    3000
+);
+
+</script>
+
+</body>
+
+</html>
+
+
+========== FILE: C:\TouristSafetyMobile\package.json ==========
+
+{
+  "name": "touristsafetymobile",
+  "main": "expo-router/entry",
+  "version": "1.0.0",
+  "dependencies": {
+    "@expo/ui": "~57.0.22",
+    "@react-native-async-storage/async-storage": "2.2.0",
+    "expo": "~57.0.27",
+    "expo-constants": "~57.0.21",
+    "expo-device": "~57.0.2",
+    "expo-font": "~57.0.4",
+    "expo-glass-effect": "~57.0.4",
+    "expo-image": "~57.0.5",
+    "expo-linking": "~57.0.12",
+    "expo-location": "~57.0.20",
+    "expo-router": "~57.0.25",
+    "expo-splash-screen": "~57.0.9",
+    "expo-status-bar": "~57.0.1",
+    "expo-symbols": "~57.0.3",
+    "expo-system-ui": "~57.0.4",
+    "expo-web-browser": "~57.0.3",
+    "react": "19.2.3",
+    "react-dom": "19.2.3",
+    "react-native": "0.86.3",
+    "react-native-gesture-handler": "~2.32.0",
+    "react-native-reanimated": "4.5.1",
+    "react-native-safe-area-context": "~5.7.0",
+    "react-native-screens": "~4.26.0",
+    "react-native-web": "~0.21.0",
+    "react-native-worklets": "0.10.1"
+  },
+  "devDependencies": {
+    "@types/react": "~19.2.2",
+    "typescript": "~6.0.3"
+  },
+  "scripts": {
+    "start": "expo start",
+    "reset-project": "node ./scripts/reset-project.js",
+    "android": "expo start --android",
+    "ios": "expo start --ios",
+    "web": "expo start --web",
+    "lint": "expo lint"
+  },
+  "private": true
+}
+
+
+========== FILE: C:\TouristSafetyMobile\app.json ==========
+
+{
+  "expo": {
+    "name": "Tourist Safety",
+    "slug": "tourist-safety",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "light",
+    "scheme": "touristsafety",
+
+    "ios": {
+      "supportsTablet": true
+    },
+
+    "android": {
+      "package": "com.touristsafety.monitoring",
+      "permissions": [
+        "ACCESS_COARSE_LOCATION",
+        "ACCESS_FINE_LOCATION"
+      ]
+    },
+
+    "web": {
+      "bundler": "metro"
+    },
+
+    "plugins": [
+      "expo-router",
+      "expo-location"
+    ]
+  }
+}
+
+
+========== FILE: C:\TouristSafetyMobile\app\index.tsx ==========
+
+import React, {
+  useEffect,
+  useRef,
+  useState,
+} from "react";
+
+import {
+  Alert,
+  SafeAreaView,
+  ScrollView,
+  StatusBar,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
+} from "react-native";
+
+import * as Location from "expo-location";
+
+import AsyncStorage from
+  "@react-native-async-storage/async-storage";
+
+
+/*
+==============================================================
+BACKEND CONFIGURATION
+==============================================================
+
+IMPORTANT:
+
+Replace YOUR_PC_IP with the IPv4 address of the computer
+running the FastAPI backend.
+
+Example:
+
+const BACKEND_URL =
+  "http://192.168.1.8:8000";
+
+==============================================================
+*/
+
+const BACKEND_URL =
+  "http://YOUR_PC_IP:8000";
+
+
+/*
+==============================================================
+TYPES
+==============================================================
+*/
+
+type Coordinates = {
+  latitude: number;
+  longitude: number;
+};
+
+type LocationState = {
+  latitude: number | null;
+  longitude: number | null;
+  accuracy: number | null;
+};
+
+
+/*
+==============================================================
+MAIN SCREEN
+==============================================================
+*/
+
+export default function HomeScreen() {
+
+  const [
+    touristId,
+    setTouristId
+  ] = useState("TOURIST-001");
+
+
+  const [
+    location,
+    setLocation
+  ] = useState<LocationState>({
+    latitude: null,
+    longitude: null,
+    accuracy: null,
+  });
+
+
+  const [
+    serverStatus,
+    setServerStatus
+  ] = useState("Checking");
+
+
+  const [
+    tracking,
+    setTracking
+  ] = useState(false);
+
+
+  const [
+    status,
+    setStatus
+  ] = useState("SAFE");
+
+
+  const [
+    lastMessage,
+    setLastMessage
+  ] = useState(
+    "Application ready"
+  );
+
+
+  const trackingRef =
+    useRef<ReturnType<
+      typeof setInterval
+    > | null>(null);
+
+
+  /*
+  ============================================================
+  LOAD SAVED TOURIST ID
+  ============================================================
+  */
+
+  useEffect(() => {
+
+    loadTouristId();
+
+    checkServer();
+
+    return () => {
+
+      if (
+        trackingRef.current
+      ) {
+
+        clearInterval(
+          trackingRef.current
+        );
+
+      }
+
+    };
+
+  }, []);
+
+
+  /*
+  ============================================================
+  SAVE TOURIST ID
+  ============================================================
+  */
+
+  async function saveTouristId(
+    value: string
+  ) {
+
+    try {
+
+      await AsyncStorage.setItem(
+        "tourist_id",
+        value
+      );
+
+    }
+
+    catch (error) {
+
+      console.log(
+        "Unable to save tourist ID",
+        error
+      );
+
+    }
+
+  }
+
+
+  /*
+  ============================================================
+  LOAD TOURIST ID
+  ============================================================
+  */
+
+  async function loadTouristId() {
+
+    try {
+
+      const saved =
+        await AsyncStorage.getItem(
+          "tourist_id"
+        );
+
+      if (saved) {
+
+        setTouristId(
+          saved
+        );
+
+      }
+
+    }
+
+    catch (error) {
+
+      console.log(
+        "Unable to load tourist ID",
+        error
+      );
+
+    }
+
+  }
+
+
+  /*
+  ============================================================
+  CHECK SERVER
+  ============================================================
+  */
+
+  async function checkServer() {
+
+    try {
+
+      setServerStatus(
+        "Checking..."
+      );
+
+      const response =
+        await fetch(
+          BACKEND_URL +
+          "/health"
+        );
+
+
+      if (
+        !response.ok
+      ) {
+
+        throw new Error(
+          "Server unavailable"
+        );
+
+      }
+
+
+      const data =
+        await response.json();
+
+
+      if (
+        data.status ===
+        "healthy"
+      ) {
+
+        setServerStatus(
+          "ONLINE"
+        );
+
+      }
+
+      else {
+
+        setServerStatus(
+          "CONNECTED"
+        );
+
+      }
+
+
+      setLastMessage(
+        "Backend connected"
+      );
+
+    }
+
+    catch (error) {
+
+      setServerStatus(
+        "OFFLINE"
+      );
+
+      setLastMessage(
+        "Cannot connect to backend"
+      );
+
+    }
+
+  }
+
+
+  /*
+  ============================================================
+  REQUEST LOCATION PERMISSION
+  ============================================================
+  */
+
+  async function requestLocationPermission() {
+
+    const {
+      status
+    } =
+      await Location.requestForegroundPermissionsAsync();
+
+
+    if (
+      status !== "granted"
+    ) {
+
+      Alert.alert(
+        "Location Permission",
+        "Location permission is required for tourist safety monitoring."
+      );
+
+      return false;
+
+    }
+
+
+    return true;
+
+  }
+
+
+  /*
+  ============================================================
+  GET CURRENT LOCATION
+  ============================================================
+  */
+
+  async function getCurrentLocation() {
+
+    const permission =
+      await requestLocationPermission();
+
+
+    if (!permission) {
+
+      return null;
+
+    }
+
+
+    try {
+
+      const result =
+        await Location.getCurrentPositionAsync(
+          {
+            accuracy:
+              Location.Accuracy.High,
+          }
+        );
+
+
+      const newLocation = {
+
+        latitude:
+          result.coords.latitude,
+
+        longitude:
+          result.coords.longitude,
+
+        accuracy:
+          result.coords.accuracy,
+      };
+
+
+      setLocation(
+        newLocation
+      );
+
+
+      return newLocation;
+
+    }
+
+    catch (error) {
+
+      Alert.alert(
+        "Location Error",
+        "Unable to obtain current GPS location."
+      );
+
+      return null;
+
+    }
+
+  }
+
+
+  /*
+  ============================================================
+  SEND LOCATION TO SERVER
+  ============================================================
+  */
+
+  async function sendLocation(
+    coordinates: Coordinates
+  ) {
+
+    try {
+
+      const response =
+        await fetch(
+          BACKEND_URL +
+          "/location",
+          {
+            method: "POST",
+
+            headers: {
+              "Content-Type":
+                "application/json",
+            },
+
+            body: JSON.stringify(
+              {
+                tourist_id:
+                  touristId,
+
+                latitude:
+                  coordinates.latitude,
+
+                longitude:
+                  coordinates.longitude,
+
+                accuracy:
+                  location.accuracy,
+
+                status:
+                  status,
+              }
+            ),
+          }
+        );
+
+
+      if (
+        !response.ok
+      ) {
+
+        throw new Error(
+          "Location request failed"
+        );
+
+      }
+
+
+      const data =
+        await response.json();
+
+
+      if (
+        data.geofence
+      ) {
+
+        setStatus(
+          data.geofence.status
+        );
+
+      }
+
+
+      setLastMessage(
+        "Location sent successfully"
+      );
+
+    }
+
+    catch (error) {
+
+      setLastMessage(
+        "Location upload failed"
+      );
+
+      console.log(
+        "Location upload error",
+        error
+      );
+
+    }
+
+  }
+
+
+  /*
+  ============================================================
+  UPDATE LOCATION
+  ============================================================
+  */
+
+  async function updateLocation() {
+
+    const current =
+      await getCurrentLocation();
+
+
+    if (
+      current
+    ) {
+
+      await sendLocation(
+        current
+      );
+
+    }
+
+  }
+
+
+  /*
+  ============================================================
+  START LIVE TRACKING
+  ============================================================
+  */
+
+  async function startTracking() {
+
+    if (
+      tracking
+    ) {
+
+      return;
+
+    }
+
+
+    const permission =
+      await requestLocationPermission();
+
+
+    if (!permission) {
+
+      return;
+
+    }
+
+
+    setTracking(
+      true
+    );
+
+
+    setLastMessage(
+      "Live tracking started"
+    );
+
+
+    await updateLocation();
+
+
+    trackingRef.current =
+      setInterval(
+        async () => {
+
+          await updateLocation();
+
+        },
+        5000
+      );
+
+  }
+
+
+  /*
+  ============================================================
+  STOP LIVE TRACKING
+  ============================================================
+  */
+
+  function stopTracking() {
+
+    if (
+      trackingRef.current
+    ) {
+
+      clearInterval(
+        trackingRef.current
+      );
+
+      trackingRef.current =
+        null;
+
+    }
+
+
+    setTracking(
+      false
+    );
+
+
+    setLastMessage(
+      "Live tracking stopped"
+    );
+
+  }
+
+
+  /*
+  ============================================================
+  SEND SOS
+  ============================================================
+  */
+
+  async function sendSOS() {
+
+    const current =
+      await getCurrentLocation();
+
+
+    if (
+      !current
+    ) {
+
+      Alert.alert(
+        "SOS Error",
+        "Current GPS location could not be obtained."
+      );
+
+      return;
+
+    }
+
+
+    try {
+
+      const response =
+        await fetch(
+          BACKEND_URL +
+          "/sos",
+          {
+            method: "POST",
+
+            headers: {
+              "Content-Type":
+                "application/json",
+            },
+
+            body: JSON.stringify(
+              {
+                tourist_id:
+                  touristId,
+
+                latitude:
+                  current.latitude,
+
+                longitude:
+                  current.longitude,
+
+                accuracy:
+                  current.accuracy,
+
+                message:
+                  "Emergency SOS activated from tourist mobile application",
+              }
+            ),
+          }
+        );
+
+
+      if (
+        !response.ok
+      ) {
+
+        throw new Error(
+          "SOS request failed"
+        );
+
+      }
+
+
+      const data =
+        await response.json();
+
+
+      setStatus(
+        "SOS"
+      );
+
+
+      setLastMessage(
+        "SOS sent to authority"
+      );
+
+
+      Alert.alert(
+        "SOS SENT",
+        "Emergency alert has been sent to the authority dashboard."
+      );
+
+
+      console.log(
+        "SOS response:",
+        data
+      );
+
+    }
+
+    catch (error) {
+
+      Alert.alert(
+        "SOS Failed",
+        "Unable to send emergency alert to the backend."
+      );
+
+      console.log(
+        "SOS error:",
+        error
+      );
+
+    }
+
+  }
+
+
+  /*
+  ============================================================
+  CONFIRM SOS
+  ============================================================
+  */
+
+  function confirmSOS() {
+
+    Alert.alert(
+      "Emergency SOS",
+      "Are you sure you want to send an emergency alert?",
+      [
+        {
+          text: "Cancel",
+          style: "cancel",
+        },
+
+        {
+          text: "SEND SOS",
+          style: "destructive",
+          onPress: sendSOS,
+        },
+      ]
+    );
+
+  }
+
+
+  /*
+  ============================================================
+  SAVE TOURIST ID
+  ============================================================
+  */
+
+  async function handleTouristIdChange(
+    value: string
+  ) {
+
+    setTouristId(
+      value
+    );
+
+    await saveTouristId(
+      value
+    );
+
+  }
+
+
+  /*
+  ============================================================
+  UI
+  ============================================================
+  */
+
+  return (
+
+    <SafeAreaView
+      style={styles.safeArea}
+    >
+
+      <StatusBar
+        barStyle="dark-content"
+      />
+
+
+      <ScrollView
+        contentContainerStyle={
+          styles.container
+        }
+      >
+
+
+        <View
+          style={styles.header}
+        >
+
+          <Text
+            style={styles.title}
+          >
+            Tourist Safety
+          </Text>
+
+          <Text
+            style={styles.subtitle}
+          >
+            Monitoring System
+          </Text>
+
+        </View>
+
+
+        <View
+          style={styles.card}
+        >
+
+          <Text
+            style={styles.cardTitle}
+          >
+            Tourist ID
+          </Text>
+
+
+          <TextInput
+            value={touristId}
+            onChangeText={
+              handleTouristIdChange
+            }
+            placeholder="Enter Tourist ID"
+            style={styles.input}
+            autoCapitalize="characters"
+          />
+
+        </View>
+
+
+        <View
+          style={styles.card}
+        >
+
+          <Text
+            style={styles.cardTitle}
+          >
+            Backend Status
+          </Text>
+
+
+          <Text
+            style={[
+              styles.statusText,
+
+              serverStatus === "ONLINE"
+                ? styles.online
+                : styles.offline,
+            ]}
+          >
+            {serverStatus}
+          </Text>
+
+
+          <TouchableOpacity
+            style={styles.secondaryButton}
+            onPress={checkServer}
+          >
+
+            <Text
+              style={styles.secondaryButtonText}
+            >
+              CHECK SERVER
+            </Text>
+
+          </TouchableOpacity>
+
+        </View>
+
+
+        <View
+          style={styles.card}
+        >
+
+          <Text
+            style={styles.cardTitle}
+          >
+            Current Safety Status
+          </Text>
+
+
+          <View
+            style={[
+              styles.statusBox,
+
+              status === "SOS"
+                ? styles.sosBox
+                : status === "OUTSIDE_GEOFENCE"
+                  ? styles.warningBox
+                  : styles.safeBox,
+            ]}
+          >
+
+            <Text
+              style={styles.statusBoxText}
+            >
+              {status}
+            </Text>
+
+          </View>
+
+        </View>
+
+
+        <View
+          style={styles.card}
+        >
+
+          <Text
+            style={styles.cardTitle}
+          >
+            GPS Location
+          </Text>
+
+
+          <Text
+            style={styles.locationText}
+          >
+            Latitude:
+            {" "}
+            {location.latitude !== null
+              ? location.latitude.toFixed(6)
+              : "-"}
+          </Text>
+
+
+          <Text
+            style={styles.locationText}
+          >
+            Longitude:
+            {" "}
+            {location.longitude !== null
+              ? location.longitude.toFixed(6)
+              : "-"}
+          </Text>
+
+
+          <Text
+            style={styles.locationText}
+          >
+            Accuracy:
+            {" "}
+            {location.accuracy !== null
+              ? location.accuracy.toFixed(2) +
+                " m"
+              : "-"}
+          </Text>
+
+
+          <TouchableOpacity
+            style={styles.secondaryButton}
+            onPress={updateLocation}
+          >
+
+            <Text
+              style={styles.secondaryButtonText}
+            >
+              GET CURRENT LOCATION
+            </Text>
+
+          </TouchableOpacity>
+
+        </View>
+
+
+        <View
+          style={styles.card}
+        >
+
+          <Text
+            style={styles.cardTitle}
+          >
+            Live Tracking
+          </Text>
+
+
+          <Text
+            style={styles.trackingText}
+          >
+            {tracking
+              ? "Tracking every 5 seconds"
+              : "Tracking stopped"}
+          </Text>
+
+
+          <TouchableOpacity
+            style={
+              tracking
+                ? styles.stopButton
+                : styles.startButton
+            }
+            onPress={
+              tracking
+                ? stopTracking
+                : startTracking
+            }
+          >
+
+            <Text
+              style={styles.buttonText}
+            >
+              {tracking
+                ? "STOP TRACKING"
+                : "START LIVE TRACKING"}
+            </Text>
+
+          </TouchableOpacity>
+
+        </View>
+
+
+        <TouchableOpacity
+          style={styles.sosButton}
+          onPress={confirmSOS}
+        >
+
+          <Text
+            style={styles.sosButtonText}
+          >
+            EMERGENCY SOS
+          </Text>
+
+        </TouchableOpacity>
+
+
+        <View
+          style={styles.messageCard}
+        >
+
+          <Text
+            style={styles.messageTitle}
+          >
+            System Message
+          </Text>
+
+
+          <Text
+            style={styles.messageText}
+          >
+            {lastMessage}
+          </Text>
+
+        </View>
+
+
+        <Text
+          style={styles.footer}
+        >
+          Tourist Safety Monitoring System
+        </Text>
+
+
+      </ScrollView>
+
+    </SafeAreaView>
+
+  );
+
+}
+
+
+/*
+==============================================================
+STYLES
+==============================================================
+*/
+
+const styles =
+  StyleSheet.create({
+
+    safeArea: {
+
+      flex: 1,
+
+      backgroundColor:
+        "#f1f5f9",
+    },
+
+
+    container: {
+
+      padding:
+        18,
+
+      paddingBottom:
+        40,
+    },
+
+
+    header: {
+
+      marginBottom:
+        20,
+    },
+
+
+    title: {
+
+      fontSize:
+        32,
+
+      fontWeight:
+        "800",
+
+      color:
+        "#0f172a",
+    },
+
+
+    subtitle: {
+
+      fontSize:
+        16,
+
+      color:
+        "#64748b",
+
+      marginTop:
+        4,
+    },
+
+
+    card: {
+
+      backgroundColor:
+        "#ffffff",
+
+      borderRadius:
+        16,
+
+      padding:
+        18,
+
+      marginBottom:
+        16,
+
+      shadowColor:
+        "#000000",
+
+      shadowOpacity:
+        0.08,
+
+      shadowRadius:
+        8,
+
+      elevation:
+        3,
+    },
+
+
+    cardTitle: {
+
+      fontSize:
+        18,
+
+      fontWeight:
+        "700",
+
+      color:
+        "#0f172a",
+
+      marginBottom:
+        12,
+    },
+
+
+    input: {
+
+      borderWidth:
+        1,
+
+      borderColor:
+        "#cbd5e1",
+
+      borderRadius:
+        10,
+
+      paddingHorizontal:
+        14,
+
+      paddingVertical:
+        12,
+
+      fontSize:
+        16,
+
+      color:
+        "#0f172a",
+    },
+
+
+    statusText: {
+
+      fontSize:
+        20,
+
+      fontWeight:
+        "800",
+
+      marginBottom:
+        12,
+    },
+
+
+    online: {
+
+      color:
+        "#15803d",
+    },
+
+
+    offline: {
+
+      color:
+        "#dc2626",
+    },
+
+
+    secondaryButton: {
+
+      backgroundColor:
+        "#e2e8f0",
+
+      padding:
+        14,
+
+      borderRadius:
+        10,
+
+      alignItems:
+        "center",
+
+      marginTop:
+        8,
+    },
+
+
+    secondaryButtonText: {
+
+      color:
+        "#0f172a",
+
+      fontWeight:
+        "700",
+    },
+
+
+    statusBox: {
+
+      borderRadius:
+        12,
+
+      padding:
+        18,
+
+      alignItems:
+        "center",
+    },
+
+
+    safeBox: {
+
+      backgroundColor:
+        "#dcfce7",
+    },
+
+
+    warningBox: {
+
+      backgroundColor:
+        "#fef3c7",
+    },
+
+
+    sosBox: {
+
+      backgroundColor:
+        "#fee2e2",
+    },
+
+
+    statusBoxText: {
+
+      fontSize:
+        20,
+
+      fontWeight:
+        "800",
+
+      color:
+        "#0f172a",
+    },
+
+
+    locationText: {
+
+      fontSize:
+        15,
+
+      color:
+        "#334155",
+
+      marginBottom:
+        7,
+    },
+
+
+    trackingText: {
+
+      color:
+        "#64748b",
+
+      marginBottom:
+        10,
+    },
+
+
+    startButton: {
+
+      backgroundColor:
+        "#2563eb",
+
+      padding:
+        16,
+
+      borderRadius:
+        12,
+
+      alignItems:
+        "center",
+    },
+
+
+    stopButton: {
+
+      backgroundColor:
+        "#475569",
+
+      padding:
+        16,
+
+      borderRadius:
+        12,
+
+      alignItems:
+        "center",
+    },
+
+
+    buttonText: {
+
+      color:
+        "#ffffff",
+
+      fontWeight:
+        "800",
+    },
+
+
+    sosButton: {
+
+      backgroundColor:
+        "#dc2626",
+
+      padding:
+        20,
+
+      borderRadius:
+        16,
+
+      alignItems:
+        "center",
+
+      marginBottom:
+        16,
+
+      elevation:
+        5,
+    },
+
+
+    sosButtonText: {
+
+      color:
+        "#ffffff",
+
+      fontSize:
+        20,
+
+      fontWeight:
+        "900",
+    },
+
+
+    messageCard: {
+
+      backgroundColor:
+        "#e0f2fe",
+
+      borderRadius:
+        12,
+
+      padding:
+        16,
+
+      marginBottom:
+        20,
+    },
+
+
+    messageTitle: {
+
+      fontWeight:
+        "800",
+
+      color:
+        "#0c4a6e",
+
+      marginBottom:
+        6,
+    },
+
+
+    messageText: {
+
+      color:
+        "#075985",
+    },
+
+
+    footer: {
+
+      textAlign:
+        "center",
+
+      color:
+        "#64748b",
+
+      fontSize:
+        12,
+
+      marginTop:
+        10,
+    },
+
+  });
+
+
+========== FILE: C:\TouristSafetyMobile\app\_layout.tsx ==========
+
+import { Stack } from "expo-router";
+
+export default function RootLayout() {
+  return (
+    <Stack
+      screenOptions={{
+        headerShown: false,
+      }}
+    />
+  );
+}
+
+
+========== FILE: C:\TouristSafetyMobile\README.md ==========
+
+# Welcome to your Expo app ðŸ‘‹
+
+This is an [Expo](https://expo.dev) project created with [`create-expo-app`](https://www.npmjs.com/package/create-expo-app).
+
+## Get started
+
+1. Install dependencies
+
+   ```bash
+   npm install
+   ```
+
+2. Start the app
+
+   ```bash
+   npx expo start
+   ```
+
+In the output, you'll find options to open the app in a
+
+- [development build](https://docs.expo.dev/develop/development-builds/introduction/)
+- [Android emulator](https://docs.expo.dev/workflow/android-studio-emulator/)
+- [iOS simulator](https://docs.expo.dev/workflow/ios-simulator/)
+- [Expo Go](https://expo.dev/go), a limited sandbox for trying out app development with Expo
+
+You can start developing by editing the files inside the **app** directory. This project uses [file-based routing](https://docs.expo.dev/router/introduction).
+
+## Get a fresh project
+
+When you're ready, run:
+
+```bash
+npm run reset-project
+```
+
+This command will move the starter code to the **app-example** directory and create a blank **app** directory where you can start developing.
+
+### Other setup steps
+
+- To set up ESLint for linting, run `npx expo lint`, or follow our guide on ["Using ESLint and Prettier"](https://docs.expo.dev/guides/using-eslint/)
+- If you'd like to set up unit testing, follow our guide on ["Unit Testing with Jest"](https://docs.expo.dev/develop/unit-testing/)
+- Learn more about the TypeScript setup in this template in our guide on ["Using TypeScript"](https://docs.expo.dev/guides/typescript/)
+
+## Learn more
+
+To learn more about developing your project with Expo, look at the following resources:
+
+- [Expo documentation](https://docs.expo.dev/): Learn fundamentals, or go into advanced topics with our [guides](https://docs.expo.dev/guides).
+- [Learn Expo tutorial](https://docs.expo.dev/tutorial/introduction/): Follow a step-by-step tutorial where you'll create a project that runs on Android, iOS, and the web.
+
+## Join the community
+
+Join our community of developers creating universal apps.
+
+- [Expo on GitHub](https://github.com/expo/expo): View our open source platform and contribute.
+- [Discord community](https://chat.expo.dev): Chat with Expo users and ask questions.
+

@@ -1,0 +1,49 @@
+﻿# Secrets and environment files
+.env
+.env.*
+!.env.example
+secrets.json
+credentials.json
+*.pem
+*.key
+
+# Python
+venv/
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+
+# Local databases and backups
+*.db
+*.sqlite
+*.sqlite3
+*.bak
+
+# Expo / Node
+node_modules/
+.expo/
+dist/
+build/
+coverage/
+npm-debug.log*
+
+# Native build and signing files
+.gradle/
+*.keystore
+*.jks
+google-services.json
+GoogleService-Info.plist
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Generated Expo cache/archive
+mobile/.expo.zip
+
+# Local backups
+mobile/**/*.bak
+mobile/**/*.bak-*
+mobile/**/*.backup-*
+mobile/tsconfig.json.bak-*
